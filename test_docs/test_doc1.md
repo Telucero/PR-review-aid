@@ -1,7 +1,7 @@
 ---
 title: get started with messaging
 
-description: Follow this guide to use Wormhole's core protocol to publish a multichain message and return transaction information with VAA identifiers!
+description: follow this guide to use Wormhole's core protocol to publish a multichain message and return transaction information with VAA identifiers!
 
 categories: Basics, Typescript SDK
 
@@ -87,7 +87,7 @@ This script initialize the sdk, defines values for the source chain, creates an 
 npx tsx main.ts
 ```
 
-You will see terminal output similar to the following:
+You will see terminal output similar to the following: <3>
 
 --8<-- "code/products/messaging/get-started/terminal01.html"
 
