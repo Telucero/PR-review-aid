@@ -28,10 +28,14 @@ on:
         type: string
 
 env:
-  # N8N webhook URL - use secret if available, otherwise use default
-  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL || 'https://n8n.papermoon.io/webhook-test/7ce429d8-dbf2-430f-b8c9-a1e88020047c' }}
+  # N8N webhook URL - must be set as repository secret
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
   # Optional: N8N API key for authenticated requests  
   N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+  # Optional: Custom project identifier
+  PROJECT_ID: ${{ secrets.PROJECT_ID || github.repository }}
+  # Optional: Environment identifier
+  ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'production' }}
 
 jobs:
   trigger-n8n:
@@ -42,6 +46,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
+      - name: Validate configuration
+        run: |
+          echo "🔍 Validating configuration..."
+          
+          if [ -z "${{ env.N8N_WEBHOOK_URL }}" ]; then
+            echo "❌ ERROR: N8N_WEBHOOK_URL secret is not configured!"
+            echo "Please add N8N_WEBHOOK_URL to your repository secrets."
+            echo "Go to: Repository → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          
+          echo "✅ N8N_WEBHOOK_URL is configured"
+          echo "📋 Repository: ${{ github.repository }}"
+          echo "🌍 Environment: ${{ env.ENVIRONMENT }}"
+          echo "🆔 Project ID: ${{ env.PROJECT_ID }}"
+          echo "🔗 Webhook URL configured: $(echo '${{ env.N8N_WEBHOOK_URL }}' | sed 's/\(.*\)\(.\{10\}\)$/\1**********/')"
+        
       - name: Prepare payload data
         id: payload
         run: |
@@ -51,28 +72,42 @@ jobs:
             "github": {
               "event_name": "${{ github.event_name }}",
               "repository": {
-                "name": "${{ github.repository }}",
+                "name": "${{ github.event.repository.name }}",
                 "owner": "${{ github.repository_owner }}",
                 "full_name": "${{ github.repository }}",
                 "html_url": "${{ github.event.repository.html_url }}",
-                "clone_url": "${{ github.event.repository.clone_url }}"
+                "clone_url": "${{ github.event.repository.clone_url }}",
+                "description": "${{ github.event.repository.description }}",
+                "language": "${{ github.event.repository.language }}",
+                "topics": ${{ toJSON(github.event.repository.topics) }},
+                "visibility": "${{ github.event.repository.visibility }}"
               },
               "ref": "${{ github.ref }}",
               "ref_name": "${{ github.ref_name }}",
+              "ref_type": "${{ github.ref_type }}",
               "sha": "${{ github.sha }}",
               "actor": "${{ github.actor }}",
               "workflow": "${{ github.workflow }}",
               "run_id": "${{ github.run_id }}",
-              "run_number": "${{ github.run_number }}"
+              "run_number": "${{ github.run_number }}",
+              "run_attempt": "${{ github.run_attempt }}",
+              "job": "${{ github.job }}"
             },
             "commit": {
               "sha": "${{ github.sha }}",
               "message": "${{ github.event.head_commit.message }}",
               "author": {
                 "name": "${{ github.event.head_commit.author.name }}",
-                "email": "${{ github.event.head_commit.author.email }}"
+                "email": "${{ github.event.head_commit.author.email }}",
+                "username": "${{ github.event.head_commit.author.username }}"
               },
-              "url": "${{ github.event.head_commit.url }}"
+              "committer": {
+                "name": "${{ github.event.head_commit.committer.name }}",
+                "email": "${{ github.event.head_commit.committer.email }}"
+              },
+              "url": "${{ github.event.head_commit.url }}",
+              "tree_id": "${{ github.event.head_commit.tree_id }}",
+              "timestamp": "${{ github.event.head_commit.timestamp }}"
             },
             "pull_request": {
               "number": "${{ github.event.pull_request.number }}",
@@ -80,46 +115,85 @@ jobs:
               "body": "${{ github.event.pull_request.body }}",
               "state": "${{ github.event.pull_request.state }}",
               "merged": "${{ github.event.pull_request.merged }}",
+              "draft": "${{ github.event.pull_request.draft }}",
+              "locked": "${{ github.event.pull_request.locked }}",
               "user": {
-                "login": "${{ github.event.pull_request.user.login }}"
+                "login": "${{ github.event.pull_request.user.login }}",
+                "type": "${{ github.event.pull_request.user.type }}"
               },
               "head": {
                 "ref": "${{ github.event.pull_request.head.ref }}",
-                "sha": "${{ github.event.pull_request.head.sha }}"
+                "sha": "${{ github.event.pull_request.head.sha }}",
+                "repo": {
+                  "name": "${{ github.event.pull_request.head.repo.name }}",
+                  "full_name": "${{ github.event.pull_request.head.repo.full_name }}"
+                }
               },
               "base": {
                 "ref": "${{ github.event.pull_request.base.ref }}",
-                "sha": "${{ github.event.pull_request.base.sha }}"
-              }
+                "sha": "${{ github.event.pull_request.base.sha }}",
+                "repo": {
+                  "name": "${{ github.event.pull_request.base.repo.name }}",
+                  "full_name": "${{ github.event.pull_request.base.repo.full_name }}"
+                }
+              },
+              "assignees": ${{ toJSON(github.event.pull_request.assignees) }},
+              "requested_reviewers": ${{ toJSON(github.event.pull_request.requested_reviewers) }},
+              "labels": ${{ toJSON(github.event.pull_request.labels) }}
             },
             "issue": {
               "number": "${{ github.event.issue.number }}",
               "title": "${{ github.event.issue.title }}",
               "body": "${{ github.event.issue.body }}",
               "state": "${{ github.event.issue.state }}",
+              "locked": "${{ github.event.issue.locked }}",
               "user": {
-                "login": "${{ github.event.issue.user.login }}"
+                "login": "${{ github.event.issue.user.login }}",
+                "type": "${{ github.event.issue.user.type }}"
               },
-              "labels": [
-                ${{ toJSON(github.event.issue.labels) }}
-              ]
+              "assignees": ${{ toJSON(github.event.issue.assignees) }},
+              "labels": ${{ toJSON(github.event.issue.labels) }},
+              "milestone": {
+                "title": "${{ github.event.issue.milestone.title }}",
+                "number": "${{ github.event.issue.milestone.number }}",
+                "state": "${{ github.event.issue.milestone.state }}"
+              },
+              "created_at": "${{ github.event.issue.created_at }}",
+              "updated_at": "${{ github.event.issue.updated_at }}"
             },
             "release": {
               "tag_name": "${{ github.event.release.tag_name }}",
               "name": "${{ github.event.release.name }}",
               "body": "${{ github.event.release.body }}",
               "draft": "${{ github.event.release.draft }}",
-              "prerelease": "${{ github.event.release.prerelease }}"
+              "prerelease": "${{ github.event.release.prerelease }}",
+              "created_at": "${{ github.event.release.created_at }}",
+              "published_at": "${{ github.event.release.published_at }}",
+              "author": {
+                "login": "${{ github.event.release.author.login }}"
+              },
+              "assets": ${{ toJSON(github.event.release.assets) }}
             },
-            "inputs": {
-              "environment": "${{ github.event.inputs.environment }}",
-              "message": "${{ github.event.inputs.message }}"
+            "workflow_dispatch": {
+              "inputs": {
+                "environment": "${{ github.event.inputs.environment }}",
+                "message": "${{ github.event.inputs.message }}"
+              }
             },
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "custom_data": {
-              "project_name": "PR-review-aid",
-              "department": "engineering",
-              "priority": "normal"
+            "environment": {
+              "name": "${{ env.ENVIRONMENT }}",
+              "project_id": "${{ env.PROJECT_ID }}",
+              "runner_os": "${{ runner.os }}",
+              "runner_arch": "${{ runner.arch }}"
+            },
+            "timestamps": {
+              "workflow_started": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "payload_generated": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+            },
+            "metadata": {
+              "workflow_file": "${{ github.workflow }}",
+              "action_version": "1.0.0",
+              "payload_schema_version": "2.0.0"
             }
           }
           EOF
@@ -127,67 +201,87 @@ jobs:
           # Make payload available to next steps
           echo "payload_file=payload.json" >> $GITHUB_OUTPUT
           
-          # Display payload for debugging (remove sensitive data)
-          echo "Generated payload:"
-          cat payload.json | jq '.'
+          # Display payload for debugging (remove sensitive data if any)
+          echo "Generated payload for repository: ${{ github.repository }}"
+          echo "Event type: ${{ github.event_name }}"
+          echo "Project ID: ${{ env.PROJECT_ID }}"
+          echo "Environment: ${{ env.ENVIRONMENT }}"
 
       - name: Trigger N8N Webhook (Basic)
-        if: env.N8N_WEBHOOK_URL != ''
+        if: env.N8N_WEBHOOK_URL != '' && env.N8N_API_KEY == ''
         run: |
-          echo "Triggering N8N webhook..."
+          echo "🚀 Triggering N8N webhook (basic authentication)..."
+          echo "📡 Repository: ${{ github.repository }}"
+          echo "🎯 Event: ${{ github.event_name }}"
           
           # Basic webhook trigger
           response=$(curl -s -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
-            -H "User-Agent: GitHub-Actions/${{ github.run_id }}" \
+            -H "User-Agent: GitHub-Actions/${{ github.repository }}/${{ github.run_id }}" \
+            -H "X-GitHub-Event: ${{ github.event_name }}" \
+            -H "X-GitHub-Repository: ${{ github.repository }}" \
+            -H "X-GitHub-SHA: ${{ github.sha }}" \
+            -H "X-GitHub-Ref: ${{ github.ref }}" \
+            -H "X-GitHub-Actor: ${{ github.actor }}" \
             -d @payload.json \
             "${{ env.N8N_WEBHOOK_URL }}")
           
           http_code="${response: -3}"
           response_body="${response%???}"
           
-          echo "HTTP Status Code: $http_code"
-          echo "Response Body: $response_body"
+          echo "📊 HTTP Status Code: $http_code"
+          echo "📄 Response Body: $response_body"
           
           # Check if request was successful
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
             echo "✅ N8N webhook triggered successfully"
+            echo "🎉 Workflow integration completed for ${{ github.repository }}"
           else
             echo "❌ N8N webhook failed with status code: $http_code"
+            echo "🔍 Please check your N8N webhook configuration"
             exit 1
           fi
 
       - name: Trigger N8N Webhook (Authenticated)
         if: env.N8N_WEBHOOK_URL != '' && env.N8N_API_KEY != ''
         run: |
-          echo "Triggering N8N webhook with authentication..."
+          echo "🚀 Triggering N8N webhook (authenticated)..."
+          echo "📡 Repository: ${{ github.repository }}"
+          echo "🎯 Event: ${{ github.event_name }}"
+          echo "🔐 Using API key authentication"
           
           # Authenticated webhook trigger
           response=$(curl -s -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ env.N8N_API_KEY }}" \
-            -H "User-Agent: GitHub-Actions/${{ github.run_id }}" \
+            -H "User-Agent: GitHub-Actions/${{ github.repository }}/${{ github.run_id }}" \
             -H "X-GitHub-Event: ${{ github.event_name }}" \
             -H "X-GitHub-Repository: ${{ github.repository }}" \
             -H "X-GitHub-SHA: ${{ github.sha }}" \
+            -H "X-GitHub-Ref: ${{ github.ref }}" \
+            -H "X-GitHub-Actor: ${{ github.actor }}" \
+            -H "X-Project-ID: ${{ env.PROJECT_ID }}" \
+            -H "X-Environment: ${{ env.ENVIRONMENT }}" \
             -d @payload.json \
             "${{ env.N8N_WEBHOOK_URL }}")
           
           http_code="${response: -3}"
           response_body="${response%???}"
           
-          echo "HTTP Status Code: $http_code"
-          echo "Response Body: $response_body"
+          echo "📊 HTTP Status Code: $http_code"
+          echo "📄 Response Body: $response_body"
           
           # Check if request was successful
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
             echo "✅ N8N authenticated webhook triggered successfully"
+            echo "🎉 Workflow integration completed for ${{ github.repository }}"
             # Save response for potential use in later steps
             echo "$response_body" > n8n_response.json
           else
             echo "❌ N8N authenticated webhook failed with status code: $http_code"
+            echo "🔍 Please check your N8N webhook and API key configuration"
             exit 1
           fi
 
