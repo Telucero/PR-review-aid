@@ -1,0 +1,251 @@
+name: Trigger N8N Workflow
+
+on:
+  # Trigger on various events - customize as needed
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, closed, reopened]
+  issues:
+    types: [opened, closed, labeled]
+  release:
+    types: [published]
+  # Manual trigger with inputs
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      message:
+        description: 'Custom message for the workflow'
+        required: false
+        type: string
+
+env:
+  # N8N webhook URL - use secret if available, otherwise use default
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL || 'https://n8n.papermoon.io/webhook-test/7ce429d8-dbf2-430f-b8c9-a1e88020047c' }}
+  # Optional: N8N API key for authenticated requests  
+  N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+
+jobs:
+  trigger-n8n:
+    runs-on: ubuntu-latest
+    name: Trigger N8N Workflow
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Prepare payload data
+        id: payload
+        run: |
+          # Create a comprehensive payload with GitHub context
+          cat << EOF > payload.json
+          {
+            "github": {
+              "event_name": "${{ github.event_name }}",
+              "repository": {
+                "name": "${{ github.repository }}",
+                "owner": "${{ github.repository_owner }}",
+                "full_name": "${{ github.repository }}",
+                "html_url": "${{ github.event.repository.html_url }}",
+                "clone_url": "${{ github.event.repository.clone_url }}"
+              },
+              "ref": "${{ github.ref }}",
+              "ref_name": "${{ github.ref_name }}",
+              "sha": "${{ github.sha }}",
+              "actor": "${{ github.actor }}",
+              "workflow": "${{ github.workflow }}",
+              "run_id": "${{ github.run_id }}",
+              "run_number": "${{ github.run_number }}"
+            },
+            "commit": {
+              "sha": "${{ github.sha }}",
+              "message": "${{ github.event.head_commit.message }}",
+              "author": {
+                "name": "${{ github.event.head_commit.author.name }}",
+                "email": "${{ github.event.head_commit.author.email }}"
+              },
+              "url": "${{ github.event.head_commit.url }}"
+            },
+            "pull_request": {
+              "number": "${{ github.event.pull_request.number }}",
+              "title": "${{ github.event.pull_request.title }}",
+              "body": "${{ github.event.pull_request.body }}",
+              "state": "${{ github.event.pull_request.state }}",
+              "merged": "${{ github.event.pull_request.merged }}",
+              "user": {
+                "login": "${{ github.event.pull_request.user.login }}"
+              },
+              "head": {
+                "ref": "${{ github.event.pull_request.head.ref }}",
+                "sha": "${{ github.event.pull_request.head.sha }}"
+              },
+              "base": {
+                "ref": "${{ github.event.pull_request.base.ref }}",
+                "sha": "${{ github.event.pull_request.base.sha }}"
+              }
+            },
+            "issue": {
+              "number": "${{ github.event.issue.number }}",
+              "title": "${{ github.event.issue.title }}",
+              "body": "${{ github.event.issue.body }}",
+              "state": "${{ github.event.issue.state }}",
+              "user": {
+                "login": "${{ github.event.issue.user.login }}"
+              },
+              "labels": [
+                ${{ toJSON(github.event.issue.labels) }}
+              ]
+            },
+            "release": {
+              "tag_name": "${{ github.event.release.tag_name }}",
+              "name": "${{ github.event.release.name }}",
+              "body": "${{ github.event.release.body }}",
+              "draft": "${{ github.event.release.draft }}",
+              "prerelease": "${{ github.event.release.prerelease }}"
+            },
+            "inputs": {
+              "environment": "${{ github.event.inputs.environment }}",
+              "message": "${{ github.event.inputs.message }}"
+            },
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "custom_data": {
+              "project_name": "PR-review-aid",
+              "department": "engineering",
+              "priority": "normal"
+            }
+          }
+          EOF
+          
+          # Make payload available to next steps
+          echo "payload_file=payload.json" >> $GITHUB_OUTPUT
+          
+          # Display payload for debugging (remove sensitive data)
+          echo "Generated payload:"
+          cat payload.json | jq '.'
+
+      - name: Trigger N8N Webhook (Basic)
+        if: env.N8N_WEBHOOK_URL != ''
+        run: |
+          echo "Triggering N8N webhook..."
+          
+          # Basic webhook trigger
+          response=$(curl -s -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitHub-Actions/${{ github.run_id }}" \
+            -d @payload.json \
+            "${{ env.N8N_WEBHOOK_URL }}")
+          
+          http_code="${response: -3}"
+          response_body="${response%???}"
+          
+          echo "HTTP Status Code: $http_code"
+          echo "Response Body: $response_body"
+          
+          # Check if request was successful
+          if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            echo "✅ N8N webhook triggered successfully"
+          else
+            echo "❌ N8N webhook failed with status code: $http_code"
+            exit 1
+          fi
+
+      - name: Trigger N8N Webhook (Authenticated)
+        if: env.N8N_WEBHOOK_URL != '' && env.N8N_API_KEY != ''
+        run: |
+          echo "Triggering N8N webhook with authentication..."
+          
+          # Authenticated webhook trigger
+          response=$(curl -s -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ env.N8N_API_KEY }}" \
+            -H "User-Agent: GitHub-Actions/${{ github.run_id }}" \
+            -H "X-GitHub-Event: ${{ github.event_name }}" \
+            -H "X-GitHub-Repository: ${{ github.repository }}" \
+            -H "X-GitHub-SHA: ${{ github.sha }}" \
+            -d @payload.json \
+            "${{ env.N8N_WEBHOOK_URL }}")
+          
+          http_code="${response: -3}"
+          response_body="${response%???}"
+          
+          echo "HTTP Status Code: $http_code"
+          echo "Response Body: $response_body"
+          
+          # Check if request was successful
+          if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            echo "✅ N8N authenticated webhook triggered successfully"
+            # Save response for potential use in later steps
+            echo "$response_body" > n8n_response.json
+          else
+            echo "❌ N8N authenticated webhook failed with status code: $http_code"
+            exit 1
+          fi
+
+      - name: Handle N8N Response (Optional)
+        if: env.N8N_WEBHOOK_URL != '' && env.N8N_API_KEY != ''
+        run: |
+          if [ -f "n8n_response.json" ]; then
+            echo "Processing N8N response..."
+            
+            # Parse response and extract useful information
+            execution_id=$(cat n8n_response.json | jq -r '.executionId // empty')
+            workflow_id=$(cat n8n_response.json | jq -r '.workflowId // empty')
+            
+            if [ ! -z "$execution_id" ]; then
+              echo "N8N Execution ID: $execution_id"
+              echo "N8N Workflow ID: $workflow_id"
+              
+              # You can use these IDs to track the workflow execution
+              # or trigger additional actions based on the response
+            fi
+          fi
+
+      - name: Retry on Failure (Optional)
+        if: failure() && env.N8N_WEBHOOK_URL != ''
+        run: |
+          echo "Attempting to retry N8N webhook trigger..."
+          sleep 5
+          
+          # Retry with exponential backoff
+          for i in {1..3}; do
+            echo "Retry attempt $i/3"
+            
+            response=$(curl -s -w "%{http_code}" \
+              -X POST \
+              -H "Content-Type: application/json" \
+              -H "User-Agent: GitHub-Actions/${{ github.run_id }}-retry-$i" \
+              -d @payload.json \
+              "${{ env.N8N_WEBHOOK_URL }}")
+            
+            http_code="${response: -3}"
+            
+            if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+              echo "✅ N8N webhook retry successful on attempt $i"
+              exit 0
+            else
+              echo "❌ Retry attempt $i failed with status code: $http_code"
+              if [ $i -lt 3 ]; then
+                sleep $((2 ** i))  # Exponential backoff
+              fi
+            fi
+          done
+          
+          echo "❌ All retry attempts failed"
+          exit 1
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Clean up sensitive files
+          rm -f payload.json n8n_response.json
+          echo "Cleanup completed"
