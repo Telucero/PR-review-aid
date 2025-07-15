@@ -28,8 +28,8 @@ on:
         type: string
 
 env:
-  # N8N webhook URL - must be set as repository secret
-  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+  # N8N webhook URL - use secret if available, fallback for testing
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL || 'https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2' }}
   # Optional: N8N API key for authenticated requests  
   N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
   # Optional: Custom project identifier
@@ -214,7 +214,8 @@ jobs:
           echo "📡 Repository: ${{ github.repository }}"
           echo "🎯 Event: ${{ github.event_name }}"
           
-          # Basic webhook trigger
+          # Try POST request first (standard)
+          echo "Attempting POST request..."
           response=$(curl -s -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
@@ -230,8 +231,29 @@ jobs:
           http_code="${response: -3}"
           response_body="${response%???}"
           
-          echo "📊 HTTP Status Code: $http_code"
-          echo "📄 Response Body: $response_body"
+          echo "📊 POST HTTP Status Code: $http_code"
+          echo "📄 POST Response Body: $response_body"
+          
+          # If POST fails, try GET request
+          if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+            echo "POST failed, trying GET request..."
+            
+            response=$(curl -s -w "%{http_code}" \
+              -X GET \
+              -H "User-Agent: GitHub-Actions/${{ github.repository }}/${{ github.run_id }}" \
+              -H "X-GitHub-Event: ${{ github.event_name }}" \
+              -H "X-GitHub-Repository: ${{ github.repository }}" \
+              -H "X-GitHub-SHA: ${{ github.sha }}" \
+              -H "X-GitHub-Ref: ${{ github.ref }}" \
+              -H "X-GitHub-Actor: ${{ github.actor }}" \
+              "${{ env.N8N_WEBHOOK_URL }}")
+            
+            http_code="${response: -3}"
+            response_body="${response%???}"
+            
+            echo "📊 GET HTTP Status Code: $http_code"
+            echo "📄 GET Response Body: $response_body"
+          fi
           
           # Check if request was successful
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
@@ -240,6 +262,7 @@ jobs:
           else
             echo "❌ N8N webhook failed with status code: $http_code"
             echo "🔍 Please check your N8N webhook configuration"
+            echo "💡 Tip: Make sure your n8n webhook node is active and the URL is correct"
             exit 1
           fi
 
