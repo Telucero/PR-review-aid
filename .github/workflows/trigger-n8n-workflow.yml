@@ -1,14 +1,14 @@
-name: Trigger n8n Webhook with PR Details
+name: Trigger n8n Webhook with Complete PR Info
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  call-n8n-webhook:
+  gather-and-send:
     runs-on: ubuntu-latest
     steps:
-      - name: Get PR details from GitHub API
+      - name: Fetch PR metadata
         id: pr
         uses: octokit/request-action@v2.x
         with:
@@ -16,11 +16,50 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Send PR details to n8n Webhook
+      - name: Fetch PR files (diffs/patches)
+        id: files
+        uses: octokit/request-action@v2.x
+        with:
+          route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch PR commits
+        id: commits
+        uses: octokit/request-action@v2.x
+        with:
+          route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch PR diff (patch)
+        id: diff
+        run: |
+          curl -L \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3.diff" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
+            > pr.diff
+          # Base64 encode to avoid any formatting/escaping issues for big patches
+          DIFF_B64=$(base64 -w 0 pr.diff)
+          echo "diff_b64=$DIFF_B64" >> $GITHUB_OUTPUT
+
+      - name: Combine and send to n8n webhook
         env:
           PR_DATA: ${{ steps.pr.outputs.data }}
+          FILES_DATA: ${{ steps.files.outputs.data }}
+          COMMITS_DATA: ${{ steps.commits.outputs.data }}
+          DIFF_B64: ${{ steps.diff.outputs.diff_b64 }}
         run: |
+          cat > payload.json <<EOF
+          {
+            "pr": $PR_DATA,
+            "files": $FILES_DATA,
+            "commits": $COMMITS_DATA,
+            "diff_base64": "$DIFF_B64"
+          }
+          EOF
           curl -X POST \
             -H "Content-Type: application/json" \
-            -d "$PR_DATA" \
+            --data @payload.json \
             https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
