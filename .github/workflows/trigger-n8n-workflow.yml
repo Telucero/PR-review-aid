@@ -1,12 +1,7 @@
 name: Trigger n8n Webhook
 
 on:
-  workflow_dispatch:
-    inputs:
-      message:
-        description: 'Message to send to n8n Webhook'
-        required: false
-        default: 'Hello from GitHub Actions!'
+  push:  # Triggers on every push to any branch
 
 jobs:
   call-n8n-webhook:
@@ -16,5 +11,5 @@ jobs:
         run: |
           curl -X POST \
             -H "Content-Type: application/json" \
-            -d "{\"message\": \"${{ github.event.inputs.message }}\"}" \
-            https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
+            -d '{"message": "Triggered by push to ${GITHUB_REF}"}' \
+            https://YOUR_N8N_URL/webhook/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
