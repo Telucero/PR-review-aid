@@ -12,4 +12,4 @@ jobs:
           curl -X POST \
             -H "Content-Type: application/json" \
             -d '{"message": "Triggered by push to ${GITHUB_REF}"}' \
-            https://YOUR_N8N_URL/webhook/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
+            https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
