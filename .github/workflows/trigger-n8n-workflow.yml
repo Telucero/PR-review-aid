@@ -1,15 +1,26 @@
-name: Trigger n8n Webhook
+name: Trigger n8n Webhook with PR Details
 
 on:
-  push:  # Triggers on every push to any branch
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   call-n8n-webhook:
     runs-on: ubuntu-latest
     steps:
-      - name: Send POST request to n8n Webhook
+      - name: Get PR details from GitHub API
+        id: pr
+        uses: octokit/request-action@v2.x
+        with:
+          route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send PR details to n8n Webhook
+        env:
+          PR_DATA: ${{ steps.pr.outputs.data }}
         run: |
           curl -X POST \
             -H "Content-Type: application/json" \
-            -d '{"message": "Triggered by push to ${GITHUB_REF}"}' \
-            https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
+            -d "$PR_DATA" \
+            https://YOUR_N8N_URL/webhook/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2
