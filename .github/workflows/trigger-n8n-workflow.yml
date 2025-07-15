@@ -40,7 +40,6 @@ jobs:
             -H "Accept: application/vnd.github.v3.diff" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
             > pr.diff
-          # Base64 encode to avoid any formatting/escaping issues for big patches
           DIFF_B64=$(base64 -w 0 pr.diff)
           echo "diff_b64=$DIFF_B64" >> $GITHUB_OUTPUT
 
@@ -50,13 +49,15 @@ jobs:
           FILES_DATA: ${{ steps.files.outputs.data }}
           COMMITS_DATA: ${{ steps.commits.outputs.data }}
           DIFF_B64: ${{ steps.diff.outputs.diff_b64 }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat > payload.json <<EOF
           {
             "pr": $PR_DATA,
             "files": $FILES_DATA,
             "commits": $COMMITS_DATA,
-            "diff_base64": "$DIFF_B64"
+            "diff_base64": "$DIFF_B64",
+            "token": "$GITHUB_TOKEN"
           }
           EOF
           curl -X POST \
