@@ -210,74 +210,63 @@ jobs:
       - name: Trigger N8N Webhook (Basic)
         if: env.N8N_WEBHOOK_URL != '' && env.N8N_API_KEY == ''
         run: |
-          echo "🚀 Triggering N8N webhook (basic authentication)..."
+          echo "🚀 Triggering N8N webhook (POST request)..."
           echo "📡 Repository: ${{ github.repository }}"
           echo "🎯 Event: ${{ github.event_name }}"
+          echo "🔗 Webhook URL: $(echo '${{ env.N8N_WEBHOOK_URL }}' | sed 's/\(.*\)\(.\{10\}\)$/\1**********/')"
           
-          # Try POST request first (standard)
-          echo "Attempting POST request..."
+          # POST request to n8n webhook (as configured in your node)
           response=$(curl -s -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
             -H "User-Agent: GitHub-Actions/${{ github.repository }}/${{ github.run_id }}" \
             -H "X-GitHub-Event: ${{ github.event_name }}" \
             -H "X-GitHub-Repository: ${{ github.repository }}" \
             -H "X-GitHub-SHA: ${{ github.sha }}" \
             -H "X-GitHub-Ref: ${{ github.ref }}" \
             -H "X-GitHub-Actor: ${{ github.actor }}" \
-            -d @payload.json \
+            -H "X-GitHub-Workflow: ${{ github.workflow }}" \
+            -H "X-GitHub-Run-ID: ${{ github.run_id }}" \
+            --data @payload.json \
+            --max-time 30 \
             "${{ env.N8N_WEBHOOK_URL }}")
           
           http_code="${response: -3}"
           response_body="${response%???}"
           
-          echo "📊 POST HTTP Status Code: $http_code"
-          echo "📄 POST Response Body: $response_body"
+          echo "📊 HTTP Status Code: $http_code"
+          echo "📄 Response Body: $response_body"
           
-          # If POST fails, try GET request
-          if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-            echo "POST failed, trying GET request..."
-            
-            response=$(curl -s -w "%{http_code}" \
-              -X GET \
-              -H "User-Agent: GitHub-Actions/${{ github.repository }}/${{ github.run_id }}" \
-              -H "X-GitHub-Event: ${{ github.event_name }}" \
-              -H "X-GitHub-Repository: ${{ github.repository }}" \
-              -H "X-GitHub-SHA: ${{ github.sha }}" \
-              -H "X-GitHub-Ref: ${{ github.ref }}" \
-              -H "X-GitHub-Actor: ${{ github.actor }}" \
-              "${{ env.N8N_WEBHOOK_URL }}")
-            
-            http_code="${response: -3}"
-            response_body="${response%???}"
-            
-            echo "📊 GET HTTP Status Code: $http_code"
-            echo "📄 GET Response Body: $response_body"
-          fi
-          
-          # Check if request was successful
+          # Check if request was successful (n8n typically returns 200)
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "✅ N8N webhook triggered successfully"
+            echo "✅ N8N webhook triggered successfully!"
             echo "🎉 Workflow integration completed for ${{ github.repository }}"
+            echo "📋 N8N should now be processing the webhook data"
           else
             echo "❌ N8N webhook failed with status code: $http_code"
-            echo "🔍 Please check your N8N webhook configuration"
-            echo "💡 Tip: Make sure your n8n webhook node is active and the URL is correct"
+            echo "🔍 Response details: $response_body"
+            echo "💡 Troubleshooting tips:"
+            echo "   - Ensure your n8n workflow is active and running"
+            echo "   - Verify the webhook node is properly configured for POST requests"
+            echo "   - Check that the webhook URL path matches: 8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2"
             exit 1
           fi
 
       - name: Trigger N8N Webhook (Authenticated)
         if: env.N8N_WEBHOOK_URL != '' && env.N8N_API_KEY != ''
         run: |
-          echo "🚀 Triggering N8N webhook (authenticated)..."
+          echo "🚀 Triggering N8N webhook (authenticated POST request)..."
           echo "📡 Repository: ${{ github.repository }}"
           echo "🎯 Event: ${{ github.event_name }}"
           echo "🔐 Using API key authentication"
+          echo "🔗 Webhook URL: $(echo '${{ env.N8N_WEBHOOK_URL }}' | sed 's/\(.*\)\(.\{10\}\)$/\1**********/')"
           
-          # Authenticated webhook trigger
+          # Authenticated POST request to n8n webhook
           response=$(curl -s -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
             -H "Authorization: Bearer ${{ env.N8N_API_KEY }}" \
             -H "User-Agent: GitHub-Actions/${{ github.repository }}/${{ github.run_id }}" \
             -H "X-GitHub-Event: ${{ github.event_name }}" \
@@ -285,9 +274,12 @@ jobs:
             -H "X-GitHub-SHA: ${{ github.sha }}" \
             -H "X-GitHub-Ref: ${{ github.ref }}" \
             -H "X-GitHub-Actor: ${{ github.actor }}" \
+            -H "X-GitHub-Workflow: ${{ github.workflow }}" \
+            -H "X-GitHub-Run-ID: ${{ github.run_id }}" \
             -H "X-Project-ID: ${{ env.PROJECT_ID }}" \
             -H "X-Environment: ${{ env.ENVIRONMENT }}" \
-            -d @payload.json \
+            --data @payload.json \
+            --max-time 30 \
             "${{ env.N8N_WEBHOOK_URL }}")
           
           http_code="${response: -3}"
@@ -298,13 +290,19 @@ jobs:
           
           # Check if request was successful
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "✅ N8N authenticated webhook triggered successfully"
+            echo "✅ N8N authenticated webhook triggered successfully!"
             echo "🎉 Workflow integration completed for ${{ github.repository }}"
+            echo "📋 N8N should now be processing the webhook data"
             # Save response for potential use in later steps
             echo "$response_body" > n8n_response.json
           else
             echo "❌ N8N authenticated webhook failed with status code: $http_code"
-            echo "🔍 Please check your N8N webhook and API key configuration"
+            echo "🔍 Response details: $response_body"
+            echo "💡 Troubleshooting tips:"
+            echo "   - Verify your N8N_API_KEY secret is correct"
+            echo "   - Ensure your n8n workflow is active and running"
+            echo "   - Check that the webhook node accepts authenticated requests"
+            echo "   - Verify the webhook URL path matches: 8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2"
             exit 1
           fi
 
