@@ -47,7 +47,8 @@ jobs:
           DIFF_B64=$(base64 -w 0 pr.diff)
           echo "diff_b64=$DIFF_B64" >> $GITHUB_OUTPUT
 
-      - name: Combine and send to n8n webhook and wait for response
+      - name: Combine and send to n8n webhook and capture response
+        id: n8n
         env:
           PR_DATA: ${{ steps.pr.outputs.data }}
           FILES_DATA: ${{ steps.files.outputs.data }}
@@ -78,6 +79,11 @@ jobs:
           echo "n8n responded with status: $HTTP_STATUS"
           echo "n8n response body: $HTTP_BODY"
 
+          # Save for next step
+          echo "response_body<<EOF" >> $GITHUB_ENV
+          echo "$HTTP_BODY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
           # Check if the response contains the matching token
           MATCHED=$(echo "$HTTP_BODY" | jq -r ".token")
           STATUS=$(echo "$HTTP_BODY" | jq -r ".status")
@@ -91,4 +97,18 @@ jobs:
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
             echo "n8n workflow failed or did not complete successfully"
             exit 1
+          fi
+
+      - name: Post n8n feedback to PR (if feedback was provided)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESPONSE_BODY: ${{ env.response_body }}
+        run: |
+          COMMENT=$(echo "$RESPONSE_BODY" | jq -r ".comment")
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
+          if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ]; then
+            echo "Posting feedback to PR #$PR_NUMBER"
+            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+          else
+            echo "No comment to post."
           fi
