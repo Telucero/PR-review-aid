@@ -84,9 +84,9 @@ jobs:
           echo "$HTTP_BODY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # Check if the response contains the matching token
-          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token")
-          STATUS=$(echo "$HTTP_BODY" | jq -r ".status")
+          # Robust jq extraction, stripping stray quotes
+          STATUS=$(echo "$HTTP_BODY" | jq -r ".status" | tr -d '"')
+          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token" | tr -d '"')
 
           if [ "$MATCHED" != "$RUN_TOKEN" ] || [ "$STATUS" != "completed" ]; then
             echo "n8n workflow did not complete correctly or token mismatch"
@@ -104,11 +104,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RESPONSE_BODY: ${{ env.response_body }}
         run: |
-          COMMENT=$(echo "$RESPONSE_BODY" | jq -r ".comment")
-          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
+          COMMENT=$(echo "$RESPONSE_BODY" | jq -r ".comment" | tr -d '"')
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number" | tr -d '"')
           if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ]; then
             echo "Posting feedback to PR #$PR_NUMBER"
             gh pr comment "$PR_NUMBER" --body "$COMMENT"
           else
             echo "No comment to post."
-          fi
