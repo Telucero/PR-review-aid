@@ -8,6 +8,10 @@ jobs:
   gather-and-send:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate Run UUID
+        id: uuid
+        run: echo "run_token=$(uuidgen)" >> $GITHUB_OUTPUT
+
       - name: Fetch PR metadata
         id: pr
         uses: octokit/request-action@v2.x
@@ -49,7 +53,7 @@ jobs:
           FILES_DATA: ${{ steps.files.outputs.data }}
           COMMITS_DATA: ${{ steps.commits.outputs.data }}
           DIFF_B64: ${{ steps.diff.outputs.diff_b64 }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_TOKEN: ${{ steps.uuid.outputs.run_token }}
         run: |
           set -e
           cat > payload.json <<EOF
@@ -58,7 +62,7 @@ jobs:
             "files": $FILES_DATA,
             "commits": $COMMITS_DATA,
             "diff_base64": "$DIFF_B64",
-            "token": "$GITHUB_TOKEN"
+            "token": "$RUN_TOKEN"
           }
           EOF
 
@@ -68,14 +72,22 @@ jobs:
             --data @payload.json \
             https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2)
 
-          # Parse out the response code
           HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
 
           echo "n8n responded with status: $HTTP_STATUS"
           echo "n8n response body: $HTTP_BODY"
 
-          # Fail the action if n8n didn't succeed
+          # Check if the response contains the matching token
+          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token")
+          STATUS=$(echo "$HTTP_BODY" | jq -r ".status")
+
+          if [ "$MATCHED" != "$RUN_TOKEN" ] || [ "$STATUS" != "completed" ]; then
+            echo "n8n workflow did not complete correctly or token mismatch"
+            exit 1
+          fi
+
+          # Fail if HTTP status not 2xx
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
             echo "n8n workflow failed or did not complete successfully"
             exit 1
