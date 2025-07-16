@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   gather-and-send:
     runs-on: ubuntu-latest
@@ -82,7 +86,7 @@ jobs:
           echo "n8n responded with status: $HTTP_STATUS"
           echo "n8n response body: $HTTP_BODY"
 
-          # Save response body to file for next step (robust transfer, avoids heredoc issues)
+          # Save response body to file for next step
           echo "$HTTP_BODY" > response_body.json
 
           # Robust jq extraction, stripping stray quotes
