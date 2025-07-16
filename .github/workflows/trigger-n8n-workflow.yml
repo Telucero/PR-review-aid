@@ -79,10 +79,8 @@ jobs:
           echo "n8n responded with status: $HTTP_STATUS"
           echo "n8n response body: $HTTP_BODY"
 
-          # Save for next step
-          echo "response_body<<EOF" >> $GITHUB_ENV
-          echo "$HTTP_BODY" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          # Save response body to file for next step (robust transfer, avoids heredoc issues)
+          echo "$HTTP_BODY" > response_body.json
 
           # Robust jq extraction, stripping stray quotes
           STATUS=$(echo "$HTTP_BODY" | jq -r ".status" | tr -d '"')
@@ -102,8 +100,8 @@ jobs:
       - name: Post n8n feedback to PR (if feedback was provided)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RESPONSE_BODY: ${{ env.response_body }}
         run: |
+          RESPONSE_BODY=$(cat response_body.json)
           COMMENT=$(echo "$RESPONSE_BODY" | jq -r ".comment" | tr -d '"')
           PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number" | tr -d '"')
           if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ]; then
