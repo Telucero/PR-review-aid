@@ -8,6 +8,9 @@ jobs:
   gather-and-send:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Generate Run UUID
         id: uuid
         run: echo "run_token=$(uuidgen)" >> $GITHUB_OUTPUT
@@ -110,4 +113,3 @@ jobs:
           else
             echo "No comment to post."
           fi
-        
