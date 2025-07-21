@@ -1,2 +1,0 @@
-Remove the style docs 
-Remove anything connected to Vale
