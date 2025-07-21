@@ -10,7 +10,7 @@ categories: Basics, Typescript SDK
 
 # get started with messaging
 
-Wormhole's core functionality let's you send any data packet from one supported chain to another! This guide demonstrates how to publish your first simple, arbitrary data message from an EVM environment source chain using the wormhole typescript sdk's core messaging capabilities.
+Wormhole''s core functionality let's you send any data packet from one supported chain to another! This guide demonstrates how to publish your first simple, arbitrary data message from an EVM environment source chain using the wormhole typescript sdk's core messaging capabilities.
 
 ## Prerequisites
 
