@@ -62,6 +62,7 @@ jobs:
           COMMITS_DATA: ${{ steps.commits.outputs.data }}
           DIFF_B64: ${{ steps.diff.outputs.diff_b64 }}
           RUN_TOKEN: ${{ steps.uuid.outputs.run_token }}
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
         run: |
           set -e
           cat > payload.json <<EOF
@@ -78,7 +79,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             --data @payload.json \
-            https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2)
+             "$N8N_WEBHOOK_URL")
 
           HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
