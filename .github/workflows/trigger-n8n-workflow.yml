@@ -112,19 +112,37 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Read the nested response body
+          # Read the response_body.json file
           RESPONSE_BODY=$(cat response_body.json)
 
-          # Extract the first formattedReview from .data[]
-          COMMENT=$(echo "$RESPONSE_BODY" | jq -r '.[0].data[0].formattedReview // empty')
+          # Extract the 'comment' field, which is a JSON string (array of objects)
+          COMMENT_JSON=$(echo "$RESPONSE_BODY" | jq -r '.[0].comment')
 
-          # Provide fallback for PR number if not embedded
-          # Replace this with a real value or dynamic extraction
-          PR_NUMBER="${{ github.event.pull_request.number }}"
+          # Decode COMMENT_JSON and concatenate all formattedReview entries with double newlines between them
+          ALL_COMMENTS=$(echo "$COMMENT_JSON" | jq -r '[.[]?.formattedReview] | join("\n\n---\n\n")')
 
-          if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ]; then
+          # Extract PR number
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r '.[0].pr_number')
+
+          # Check if comment is not empty or null
+          if [ -n "$ALL_COMMENTS" ] && [ "$ALL_COMMENTS" != "null" ]; then
             echo "Posting feedback to PR #$PR_NUMBER"
-            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+
+            # Install GitHub CLI if not available
+            if ! command -v gh &> /dev/null; then
+              echo "Installing GitHub CLI..."
+              sudo apt-get update && sudo apt-get install -y gh
+            fi
+
+            # Authenticate GitHub CLI
+            echo "$GH_TOKEN" | gh auth login --with-token
+
+            # Post the concatenated comment to the PR
+            gh pr comment "$PR_NUMBER" --body "$ALL_COMMENTS"
           else
             echo "No comment to post."
           fi
+
+            
+
+              
