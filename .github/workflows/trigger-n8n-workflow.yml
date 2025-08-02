@@ -105,16 +105,29 @@ jobs:
             exit 1
           fi
 
-      - name: Post n8n feedback to PR (if feedback was provided)
+            - name: Post n8n feedback to PR (if feedback was provided)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RESPONSE_BODY=$(cat response_body.json)
-          COMMENT=$(echo "$RESPONSE_BODY" | jq -r ".comment" | tr -d '"')
-          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number" | tr -d '"')
-          if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ]; then
+
+          # Extract and parse the escaped comment array
+          RAW_COMMENTS=$(echo "$RESPONSE_BODY" | jq -r '.comment')
+          COMMENTS=$(echo "$RAW_COMMENTS" | jq '.')
+
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r '.pr_number')
+
+          # Format the array of comments into a single Markdown string
+          COMMENT_BODY=$(echo "$COMMENTS" | jq -r '
+            map(
+              "### File: " + .filename + ", Line " + (.line|tostring) + "\n" +
+              .comment + "\n\n" + .suggestion + "\n"
+            ) | join("\n---\n\n")
+          ')
+
+          if [ -n "$COMMENT_BODY" ] && [ "$COMMENT_BODY" != "null" ]; then
             echo "Posting feedback to PR #$PR_NUMBER"
-            gh pr comment "$PR_NUMBER" --body "$COMMENT"
+            gh pr comment "$PR_NUMBER" --body "$COMMENT_BODY"
           else
             echo "No comment to post."
           fi
