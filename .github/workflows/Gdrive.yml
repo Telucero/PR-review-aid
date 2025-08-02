@@ -1,0 +1,67 @@
+name: Backup Merged PR to Google Drive
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  upload-merged-pr:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required to generate full diff history
+          ref: main
+
+      - name: Get PR metadata
+        id: pr
+        run: |
+          echo "PR_TITLE=$(jq -r .pull_request.title $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+          echo "PR_NUMBER=$(jq -r .pull_request.number $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+          echo "PR_AUTHOR=$(jq -r .pull_request.user.login $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+          echo "MERGED_AT=$(jq -r .pull_request.merged_at $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+          echo "HEAD_SHA=$(jq -r .pull_request.merge_commit_sha $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+
+      - name: Generate diff patch from merged commit
+        run: |
+          mkdir -p pr_diff
+          git show $HEAD_SHA > pr_diff/merged_diff.patch
+
+      - name: Create metadata JSON
+        run: |
+          mkdir -p metadata
+          cat <<EOF > metadata/metadata.json
+          {
+            "repo": "${{ secrets.REPO_NAME }}",
+            "pr_number": "${{ env.PR_NUMBER }}",
+            "title": "${{ env.PR_TITLE }}",
+            "author": "${{ env.PR_AUTHOR }}",
+            "merged_at": "${{ env.MERGED_AT }}",
+            "merge_commit_sha": "${{ env.HEAD_SHA }}"
+          }
+          EOF
+
+      - name: Zip main branch
+        run: |
+          zip -r main.zip . -x ".git/*" -x "metadata/*" -x "pr_diff/*"
+
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Configure rclone
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > ~/.config/rclone/rclone.conf
+
+      - name: Upload backup to Google Drive
+        run: |
+          DATE_FOLDER=$(date +'%Y-%m-%d')
+          DRIVE_FOLDER="gdrive:repo-backups/$DATE_FOLDER"
+          rclone mkdir "$DRIVE_FOLDER"
+          rclone copy main.zip "$DRIVE_FOLDER/"
+          rclone copy pr_diff/merged_diff.patch "$DRIVE_FOLDER/"
+          rclone copy metadata/metadata.json "$DRIVE_FOLDER/"
