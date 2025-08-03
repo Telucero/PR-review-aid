@@ -107,73 +107,72 @@ jobs:
             echo "n8n workflow failed or did not complete successfully"
             exit 1
           fi
-
-      - name: Post n8n feedback to PR (if feedback was provided)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+      - name: Parse verification claims into structured schema
         run: |
-          # Read the response body
-          RESPONSE_ARRAY=$(cat response_body.json)
+          set -e
 
-          # Extract PR number from GitHub event
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          echo "Targeting PR #$PR_NUMBER"
+          # Extract the embedded comment string and the PR number from response_body.json
+          EMBEDDED=$(jq -r '.[0].comment' response_body.json)
+          PR_NUMBER=$(jq -r '.[0].pr_number' response_body.json)
 
-          # Check if response is an array and get length
-          if echo "$RESPONSE_ARRAY" | jq -e 'type == "array"' > /dev/null; then
-            REVIEW_COUNT=$(echo "$RESPONSE_ARRAY" | jq length)
-            echo "Found $REVIEW_COUNT review blocks"
+          # Extract the "formattedReview" intro text from the parsed JSON
+          INTRO=$(echo "$EMBEDDED" | jq -r 'fromjson | .[0].formattedReview')
 
-            # Process each review object in the array
-            for i in $(seq 0 $((REVIEW_COUNT - 1))); do
-              COMMENT=$(echo "$RESPONSE_ARRAY" | jq -r ".[$i].formattedReview // empty")
+          # Extract the array of outputs (claims) for further processing
+          OUTPUTS=$(echo "$EMBEDDED" | jq -r 'fromjson | .[0].output')
 
-              if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ] && [ "$COMMENT" != "" ]; then
-                echo "Posting review $((i+1)) to PR #$PR_NUMBER"
-                
-                # Install GitHub CLI if not present
-                if ! command -v gh &> /dev/null; then
-                  echo "Installing GitHub CLI..."
-                  sudo apt-get update && sudo apt-get install -y gh
-                fi
+          # Build the detailed markdown claims from output array, grouped by file
+          DETAILS=$(echo "$OUTPUTS" | jq -r '
+            group_by(.file_path)
+            | map({
+                file_path: .[0].file_path,
+                claims: map({
+                  prompt: (.claim | capture("Original Prompt: (?<p>.*?)\\n").p // ""),
+                  output: (.claim | capture("Original Output: (?<o>.*?)\\n").o // ""),
+                  claim: (.claim | capture("Original Claim: (?<c>.*)$").c // ""),
+                  context: .context,
+                  line_number: (.line_number | tonumber),
+                  requires_verification: (.requires_verification // false),
+                  justification: (.justification // ""),
+                  confidence_score: (
+                    if (.confidence_score == "" or .confidence_score == null)
+                    then 0.0
+                    else (.confidence_score | tonumber)
+                    end
+                  )
+                })
+              })
+            | map(
+                "### Verification Details for \(.file_path)\n\n" +
+                (.claims | map(
+                  "Line \(.line_number)\n\n" +
+                  "**Claim:** \(.claim)\n\n" +
+                  "**Original Prompt:** \(.prompt)\n\n" +
+                  "**Original Output:** \(.output)\n\n" +
+                  "**Context:**\n\(.context)\n\n" +
+                  "**Requires Verification:** \(.requires_verification | tostring)\n" +
+                  "**Confidence Score:** \(.confidence_score)\n" +
+                  "**Justification:** \(
+                    if (.justification == "" or .justification == null) then
+                      "_(none provided)_"
+                    else
+                      .justification
+                    end
+                  )\n"
+                ) | join("\n\n---\n\n"))
+              )
+            | join("\n\n===\n\n")
+          ')
 
-                # Authenticate gh CLI
-                echo "$GH_TOKEN" | gh auth login --with-token
+          # Combine the extracted intro with the detailed claims
+          MARKDOWN="$INTRO
 
-                # Post the comment
-                gh pr comment "$PR_NUMBER" --body "$COMMENT"
-                echo "Successfully posted review $((i+1))"
-              else
-                echo "Skipping empty or null comment at index $i"
-              fi
-            done
+          ---
 
-            if [ "$REVIEW_COUNT" -eq 0 ]; then
-              echo "No reviews found in the response array"
-            fi
-          else
-            echo "Response is not an array format, checking for single object..."
-            # Handle single object response (fallback)
-            COMMENT=$(echo "$RESPONSE_ARRAY" | jq -r ".formattedReview // .comment // empty")
-            
-            if [ -n "$COMMENT" ] && [ "$COMMENT" != "null" ] && [ "$COMMENT" != "" ]; then
-              echo "Posting single review to PR #$PR_NUMBER"
-              
-              # Install GitHub CLI if not present
-              if ! command -v gh &> /dev/null; then
-                echo "Installing GitHub CLI..."
-                sudo apt-get update && sudo apt-get install -y gh
-              fi
+          $DETAILS"
 
-              # Authenticate gh CLI
-              echo "$GH_TOKEN" | gh auth login --with-token
+          echo "Posting PR comment to PR #$PR_NUMBER..."
 
-              # Post the comment
-              gh pr comment "$PR_NUMBER" --body "$COMMENT"
-              echo "Successfully posted review"
-            else
-              echo "No valid comment found in response"
-            fi
-          fi
-
-          echo "Review posting process completed"
+          # Post the markdown comment using GitHub CLI and extracted PR number
+          gh pr comment "$PR_NUMBER" --body "$MARKDOWN"
