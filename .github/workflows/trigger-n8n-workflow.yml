@@ -110,69 +110,23 @@ jobs:
         
       - name: Parse verification claims into structured schema
         run: |
-          set -e
+          RESPONSE_BODY=$(cat response_body.json)
 
-          # Extract the embedded comment string and the PR number from response_body.json
-          EMBEDDED=$(jq -r '.[0].comment' response_body.json)
-          PR_NUMBER=$(jq -r '.[0].pr_number' response_body.json)
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number" | tr -d '"')
+          COMMENTS_JSON=$(echo "$RESPONSE_BODY" | jq -r ".comment")
 
-          # Extract the "formattedReview" intro text from the parsed JSON
-          INTRO=$(echo "$EMBEDDED" | jq -r 'fromjson | .[0].formattedReview')
+          if [ -z "$COMMENTS_JSON" ] || [ "$COMMENTS_JSON" == "null" ]; then
+            echo "No comments to post."
+            exit 0
+          fi
 
-          # Extract the array of outputs (claims) for further processing
-          OUTPUTS=$(echo "$EMBEDDED" | jq -r 'fromjson | .[0].output')
+          # Loop through each item in the JSON array and post the formattedReview
+          echo "$COMMENTS_JSON" | jq -c '.[]' | while read -r item; do
+            FORMATTED_REVIEW=$(echo "$item" | jq -r '.formattedReview')
 
-          # Build the detailed markdown claims from output array, grouped by file
-          DETAILS=$(echo "$OUTPUTS" | jq -r '
-            group_by(.file_path)
-            | map({
-                file_path: .[0].file_path,
-                claims: map({
-                  prompt: (.claim | capture("Original Prompt: (?<p>.*?)\\n").p // ""),
-                  output: (.claim | capture("Original Output: (?<o>.*?)\\n").o // ""),
-                  claim: (.claim | capture("Original Claim: (?<c>.*)$").c // ""),
-                  context: .context,
-                  line_number: (.line_number | tonumber),
-                  requires_verification: (.requires_verification // false),
-                  justification: (.justification // ""),
-                  confidence_score: (
-                    if (.confidence_score == "" or .confidence_score == null)
-                    then 0.0
-                    else (.confidence_score | tonumber)
-                    end
-                  )
-                })
-              })
-            | map(
-                "### Verification Details for \(.file_path)\n\n" +
-                (.claims | map(
-                  "Line \(.line_number)\n\n" +
-                  "**Claim:** \(.claim)\n\n" +
-                  "**Original Prompt:** \(.prompt)\n\n" +
-                  "**Original Output:** \(.output)\n\n" +
-                  "**Context:**\n\(.context)\n\n" +
-                  "**Requires Verification:** \(.requires_verification | tostring)\n" +
-                  "**Confidence Score:** \(.confidence_score)\n" +
-                  "**Justification:** \(
-                    if (.justification == "" or .justification == null) then
-                      "_(none provided)_"
-                    else
-                      .justification
-                    end
-                  )\n"
-                ) | join("\n\n---\n\n"))
-              )
-            | join("\n\n===\n\n")
-          ')
-
-          # Combine the extracted intro with the detailed claims
-          MARKDOWN="$INTRO
-
-          ---
-
-          $DETAILS"
-
-          echo "Posting PR comment to PR #$PR_NUMBER..."
-
-          # Post the markdown comment using GitHub CLI and extracted PR number
-          gh pr comment "$PR_NUMBER" --body "$MARKDOWN"
+            if [ -n "$FORMATTED_REVIEW" ] && [ "$FORMATTED_REVIEW" != "null" ]; then
+              echo "Posting feedback to PR #$PR_NUMBER..."
+              gh pr comment "$PR_NUMBER" --body "$FORMATTED_REVIEW"
+            fi
+          done
+          
