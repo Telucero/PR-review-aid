@@ -109,10 +109,12 @@ jobs:
           fi
         
       - name: Parse verification claims into structured schema
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RESPONSE_BODY=$(cat response_body.json)
 
-          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number" | tr -d '"')
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
           COMMENTS_JSON=$(echo "$RESPONSE_BODY" | jq -r ".comment")
 
           if [ -z "$COMMENTS_JSON" ] || [ "$COMMENTS_JSON" == "null" ]; then
@@ -120,13 +122,12 @@ jobs:
             exit 0
           fi
 
-          # Loop through each item in the JSON array and post the formattedReview
-          echo "$COMMENTS_JSON" | jq -c '.[]' | while read -r item; do
+          # COMMENTS_JSON is a JSON string representing an array, parse it properly
+          # Use jq to parse the string as JSON, iterate over each object and get formattedReview
+          echo "$COMMENTS_JSON" | jq -c '.' | jq -c '.[]' | while read -r item; do
             FORMATTED_REVIEW=$(echo "$item" | jq -r '.formattedReview')
-
             if [ -n "$FORMATTED_REVIEW" ] && [ "$FORMATTED_REVIEW" != "null" ]; then
               echo "Posting feedback to PR #$PR_NUMBER..."
               gh pr comment "$PR_NUMBER" --body "$FORMATTED_REVIEW"
             fi
           done
-          
