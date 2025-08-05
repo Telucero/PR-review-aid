@@ -23,15 +23,6 @@ A validator will be penalized for inappropriate voting activity during the block
 - **`ForInvalid` vote** - when acting as a secondary checker, the validator votes in favor of an invalid block
 - **`AgainstValid` vote** - when acting as a secondary checker, the validator votes against a valid block. This type of vote wastes network resources required to resolve the disparate votes and resulting dispute
 
-### Equivocations
-
-Equivocation occurs when a validator produces statements that conflict with each other when producing blocks or voting. Unintentional equivocations usually occur when duplicate signing keys reside on the validator host. If keys are never duplicated, the probability of an honest equivocation slash decreases to near zero. The equivocation related offenses are as follows:
-
-- **Equivocation** - the validator produces two or more of the same block or vote
-    - **GRANDPA and BEEFY equivocation** - the validator signs two or more votes in the same round on different chains
-    - **BABE equivocation** - the validator produces two or more blocks on the relay chain in the same time slot
-- **Double seconded equivocation** - the validator attempts to second, or back, more than one block in the same round
-- **Seconded and valid equivocation** - the validator seconds, or backs, a block and then attempts to hide their role as the responsible backer by later placing a standard validation vote
 
 ## Penalties
 
@@ -116,6 +107,16 @@ The following scenarios demonstrate how this formula means slash percentages can
 The examples above show the risk of nominating or running many validators in the active set. While rewards grow linearly (two validators will get you approximately twice as many staking rewards as one), slashing grows exponentially. Going from a single validator equivocating to two validators equivocating causes a slash four time as much as the single validator.
 
 Validators may run their nodes on multiple machines to ensure they can still perform validation work if one of their nodes goes down. Still, validator operators should be cautious when setting these up. Equivocation is possible if they don't coordinate well in managing signing machines.
+
+### Equivocations
+
+Equivocation occurs when a validator produces statements that conflict with each other when producing blocks or voting. Unintentional equivocations usually occur when duplicate signing keys reside on the validator host. If keys are never duplicated, the probability of an honest equivocation slash decreases to near zero. The equivocation related offenses are as follows:
+
+- **Equivocation** - the validator produces two or more of the same block or vote
+    - **GRANDPA and BEEFY equivocation** - the validator signs two or more votes in the same round on different chains
+    - **BABE equivocation** - the validator produces two or more blocks on the relay chain in the same time slot
+- **Double seconded equivocation** - the validator attempts to second, or back, more than one block in the same round
+- **Seconded and valid equivocation** - the validator seconds, or backs, a block and then attempts to hide their role as the responsible backer by later placing a standard validation vote
 
 #### Best Practices to Avoid Slashing
 
