@@ -71,7 +71,7 @@ pallet-assets = {
 
 In Cargo, the “features” flags provide a mechanism to tell the compiler to include or leave out certain portions of code, which is a useful mechanism to optimize compile time, minimize binary file sizes, or disable certain behavior (for example, not including unit testing or benchmarking functionality in the runtime intended for production).
 
-To compile the standard features for the Assets module within the runtime, the same `Cargo.toml` file in the `runtime` folder must be edited, enabling the flag. Everything listed in this section will ensure that it is available to the compiler when building the runtime binary, which is ultimately the file containing all the information to run your Tanssi-powered network initially.
+
 
 ```toml
 [features]
@@ -84,6 +84,9 @@ std = [
    ...
 ]
 ```
+
+To compile the standard features for the Assets module within the runtime, the same `Cargo.toml` file in the `runtime` folder must be edited, enabling the flag. Everything listed in this section will ensure that it is available to the compiler when building the runtime binary, which is ultimately the file containing all the information to run your Tanssi-powered network initially.
+
 ### Configure the Module {: #configure-the-module }
 
 With the dependency declared in the project, the module can now be configured and added to the runtime. To do so, you need to edit the `lib.rs` file that is located at:
@@ -100,8 +103,6 @@ impl pallet_assets::Config for Runtime { ... }
 ```
 
 [Traits](https://doc.rust-lang.org/book/ch10-02-traits.html){target=\_blank} are a way of defining shared behavior in Rust, and in this case, they allow a new runtime to benefit from the functionality the Assets module provides only by implementing its configuration trait and parameters.
-
-Some of the parameters the trait needs to define might be constant values, in which case, they have to be defined and enclosed within the macro `parameter_types!`, which helps us to reduce the development effort by expanding the code and converting each of the constants into the correct struct type with functions that allow the runtime to read its type and values in a standardized way.
 
 The following code snippet shows an example of the constant definitions to be used in the configuration of the module:
 
