@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write # This permission is crucial for creating PR reviews
+  pull-requests: write
 
 jobs:
   gather-and-send:
@@ -47,9 +47,9 @@ jobs:
         id: diff
         run: |
           curl -L \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3.diff" \
-            "[https://api.github.com/repos/$](https://api.github.com/repos/$){{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
             > pr.diff
           DIFF_B64=$(base64 -w 0 pr.diff)
           echo "diff_b64=$DIFF_B64" >> $GITHUB_OUTPUT
@@ -62,23 +62,30 @@ jobs:
           COMMITS_DATA: ${{ steps.commits.outputs.data }}
           DIFF_B64: ${{ steps.diff.outputs.diff_b64 }}
           RUN_TOKEN: ${{ steps.uuid.outputs.run_token }}
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
         run: |
           set -e
-          cat > payload.json <<EOF
-          {
-            "pr": $PR_DATA,
-            "files": $FILES_DATA,
-            "commits": $COMMITS_DATA,
-            "diff_base64": "$DIFF_B64",
-            "token": "$RUN_TOKEN"
-          }
-          EOF
+
+          # Build payload.json using jq to avoid invalid JSON formatting
+          jq -n \
+            --argjson pr "$PR_DATA" \
+            --argjson files "$FILES_DATA" \
+            --argjson commits "$COMMITS_DATA" \
+            --arg diff_base64 "$DIFF_B64" \
+            --arg token "$RUN_TOKEN" \
+            '{
+              pr: $pr,
+              files: $files,
+              commits: $commits,
+              diff_base64: $diff_base64,
+              token: $token
+            }' > payload.json
 
           # Post to n8n and capture response
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             --data @payload.json \
-            [https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2](https://n8n.papermoon.io/webhook-test/8bdbd1e3-f7bf-4bec-ae9d-9535ef6158a2))
+            "$N8N_WEBHOOK_URL")
 
           HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
@@ -86,93 +93,49 @@ jobs:
           echo "n8n responded with status: $HTTP_STATUS"
           echo "n8n response body: $HTTP_BODY"
 
-          # Save response body to file for next step
           echo "$HTTP_BODY" > response_body.json
 
-          # Robust jq extraction for status and token, stripping stray quotes
-          STATUS=$(echo "$HTTP_BODY" | jq -r ".status // empty" | tr -d '"')
-          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token // empty" | tr -d '"')
-
-          if [ "$MATCHED" != "$RUN_TOKEN" ] || [ "$STATUS" != "completed" ]; then
-            echo "n8n workflow did not complete correctly or token mismatch"
-            # It's better to allow the next step to decide if it fails based on review content
-            # exit 1 # Don't exit here, let the review posting happen if valid JSON is received
+          STATUS=$(echo "$HTTP_BODY" | jq -r ".status")
+          if [ $? -ne 0 ]; then
+            echo "Failed to parse .status from n8n response (invalid JSON?)"
+            exit 1
           fi
-
-          # Fail if HTTP status not 2xx
-          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
-            echo "n8n webhook call failed with HTTP status: $HTTP_STATUS"
-            # exit 1 # Don't exit here, let the review posting happen if valid JSON is received
-          fi
-
-
-      - name: Post n8n feedback to PR (create review with committable suggestions)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          #!/bin/bash
-          set -e # Exit immediately if a command exits with a non-zero status.
-
-          if ! command -v jq &> /dev/null
-          then
-              echo "jq could not be found, installing..."
-              sudo apt-get update && sudo apt-get install -y jq
-          fi
-
-          RESPONSE_BODY=$(cat response_body.json)
-
-          # Extract the structured 'comment' object from n8n's response
-          REVIEW_PAYLOAD_FROM_N8N=$(echo "$RESPONSE_BODY" | jq -c '.comment // {}') # Default to empty object if 'comment' is null/missing
-          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number // empty" | tr -d '"')
-
-          # --- Validation before constructing and posting review ---
-          if [ -z "$PR_NUMBER" ]; then
-            echo "Error: PR number not found in n8n response. Cannot post review."
+          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token")
+          if [ $? -ne 0 ]; then
+            echo "Failed to parse .token from n8n response (invalid JSON?)"
             exit 1
           fi
 
-          # Get the 'comments' array from n8n's payload
-          # Default to empty array if not present or not an array
-          INLINE_COMMENTS=$(echo "$REVIEW_PAYLOAD_FROM_N8N" | jq -c '.comments // [] | if type != "array" then [] else . end')
-
-          # Determine the event type based on whether there are any inline comments
-          # If the 'comments' array is not empty, request changes. Otherwise, it's a regular comment.
-          # You can add more complex logic here if needed (e.g., always COMMENT, or check content of body).
-          NUM_INLINE_COMMENTS=$(echo "$INLINE_COMMENTS" | jq length)
-          REVIEW_EVENT_TYPE="COMMENT" # Default to COMMENT
-          if [ "$NUM_INLINE_COMMENTS" -gt 0 ]; then
-              REVIEW_EVENT_TYPE="REQUEST_CHANGES"
+          if [ "$MATCHED" != "$RUN_TOKEN" ] || [ "$STATUS" != "completed" ]; then
+            echo "n8n workflow did not complete correctly or token mismatch"
+            exit 1
           fi
 
-          # Get the overall body from n8n's payload
-          REVIEW_OVERALL_BODY=$(echo "$REVIEW_PAYLOAD_FROM_N8N" | jq -r '.body // ""')
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "n8n workflow failed or did not complete successfully"
+            exit 1
+          fi
+        
+      - name: Parse verification claims into structured schema
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESPONSE_BODY=$(cat response_body.json)
 
-          # Construct the final payload for the GitHub API, explicitly setting 'event'
-          REVIEW_PAYLOAD_FOR_GH_API=$(jq -n \
-            --arg body "$REVIEW_OVERALL_BODY" \
-            --arg event "$REVIEW_EVENT_TYPE" \
-            --argjson comments "$INLINE_COMMENTS" \
-            '{body: $body, event: $event, comments: $comments}'
-          )
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
+          COMMENTS_JSON=$(echo "$RESPONSE_BODY" | jq -r ".comment")
 
-          # Check if the generated payload has meaningful content to post
-          # (e.g., a body, or at least one inline comment)
-          HAS_BODY_CONTENT=$(echo "$REVIEW_OVERALL_BODY" | wc -c) # Check length of body
-          if [ "$HAS_BODY_CONTENT" -lt 2 ] && [ "$NUM_INLINE_COMMENTS" -eq 0 ]; then
-              echo "Review payload is empty (no body content and no inline comments). Skipping PR review."
-              exit 0 # Exit successfully if nothing to post
+          if [ -z "$COMMENTS_JSON" ] || [ "$COMMENTS_JSON" == "null" ]; then
+            echo "No comments to post."
+            exit 0
           fi
 
-
-          echo "Constructed GitHub PR Review Payload:"
-          echo "$REVIEW_PAYLOAD_FOR_GH_API" | jq . # Pretty print for logs
-
-          # Use gh api to create the pull request review
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github.vss.plus.json" \
-            "/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
-            --input <(echo "$REVIEW_PAYLOAD_FOR_GH_API")
-
-          echo "Successfully posted GitHub PR review."
-        shell: bash
+          # COMMENTS_JSON is a JSON string representing an array, parse it properly
+          # Use jq to parse the string as JSON, iterate over each object and get formattedReview
+          echo "$COMMENTS_JSON" | jq -c '.' | jq -c '.[]' | while read -r item; do
+            FORMATTED_REVIEW=$(echo "$item" | jq -r '.formattedReview')
+            if [ -n "$FORMATTED_REVIEW" ] && [ "$FORMATTED_REVIEW" != "null" ]; then
+              echo "Posting feedback to PR #$PR_NUMBER..."
+              gh pr comment "$PR_NUMBER" --body "$FORMATTED_REVIEW"
+            fi
+          done
