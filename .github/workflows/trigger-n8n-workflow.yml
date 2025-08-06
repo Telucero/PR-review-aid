@@ -24,30 +24,27 @@ jobs:
         uses: octokit/request-action@v2.x
         with:
           route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
 
       - name: Fetch PR files (diffs/patches)
         id: files
         uses: octokit/request-action@v2.x
         with:
           route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
 
       - name: Fetch PR commits
         id: commits
         uses: octokit/request-action@v2.x
         with:
           route: GET /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
 
       - name: Fetch PR diff (patch)
         id: diff
         run: |
           curl -L \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            
             -H "Accept: application/vnd.github.v3.diff" \
             "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
             > pr.diff
@@ -95,12 +92,12 @@ jobs:
 
           echo "$HTTP_BODY" > response_body.json
 
-          STATUS=$(echo "$HTTP_BODY" | jq -r ".status")
+          STATUS=$(echo "$HTTP_BODY" | jq -r ".status" | tr -d '"')
           if [ $? -ne 0 ]; then
             echo "Failed to parse .status from n8n response (invalid JSON?)"
             exit 1
           fi
-          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token")
+          MATCHED=$(echo "$HTTP_BODY" | jq -r ".token" | tr -d '"')
           if [ $? -ne 0 ]; then
             echo "Failed to parse .token from n8n response (invalid JSON?)"
             exit 1
@@ -117,8 +114,7 @@ jobs:
           fi
         
       - name: Parse verification claims into structured schema
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
         run: |
           RESPONSE_BODY=$(cat response_body.json)
 
