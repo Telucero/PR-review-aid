@@ -184,7 +184,7 @@ jobs:
         env:
           EXPECTED_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
         run: |
-          RECEIVED_TOKEN=$(jq -r '.receiving_token // empty' response_body.json)
+          RECEIVED_TOKEN=$(jq -r 'receiving_token // empty' response_body.json)
           if [ -z "$RECEIVED_TOKEN" ]; then
             echo "❌ No receiving_token provided by n8n"
             exit 1
