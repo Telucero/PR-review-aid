@@ -2,7 +2,7 @@ name: Trigger n8n Webhook with Complete PR Info
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
