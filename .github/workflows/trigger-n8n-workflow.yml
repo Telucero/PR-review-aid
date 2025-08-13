@@ -161,11 +161,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=$(jq -r ".pr_number" response_body.json)
-          jq -c ".comment[]" response_body.json | while read -r item; do
+          RESPONSE_BODY=$(cat response_body.json)
+
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
+          COMMENTS_JSON=$(echo "$RESPONSE_BODY" | jq -r ".comment")
+
+          if [ -z "$COMMENTS_JSON" ] || [ "$COMMENTS_JSON" == "null" ]; then
+            echo "No comments to post."
+            exit 0
+          fi
+
+          echo "$COMMENTS_JSON" | jq -c '.' | jq -c '.[]' | while read -r item; do
             FORMATTED_REVIEW=$(echo "$item" | jq -r '.formattedReview')
             if [ -n "$FORMATTED_REVIEW" ] && [ "$FORMATTED_REVIEW" != "null" ]; then
               echo "Posting feedback to PR #$PR_NUMBER..."
               gh pr comment "$PR_NUMBER" --body "$FORMATTED_REVIEW"
             fi
           done
+
