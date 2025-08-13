@@ -2,7 +2,7 @@ name: Trigger n8n Webhook with Complete PR Info
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened]
 
 permissions:
   contents: write
@@ -11,6 +11,7 @@ permissions:
 jobs:
   gather-and-send:
     runs-on: ubuntu-latest
+    environment: n8n-sending  # Use environment-specific secrets here
     steps:
 
       # -----------------------
@@ -41,8 +42,13 @@ jobs:
             exit 1
           fi
 
+          if [[ -z "${{ secrets.N8N_SENDING_TOKEN }}" ]]; then
+            echo "❌ Missing N8N_SENDING_TOKEN secret."
+            exit 1
+          fi
+
       # -----------------------
-      # 4. Fetch PR metadata
+      # 4-6. Fetch PR metadata, files, commits
       # -----------------------
       - name: Fetch PR metadata
         run: |
@@ -50,18 +56,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # -----------------------
-      # 5. Fetch PR files (diffs/patches)
-      # -----------------------
       - name: Fetch PR files
         run: |
           gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files > files.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # -----------------------
-      # 6. Fetch PR commits
-      # -----------------------
       - name: Fetch PR commits
         run: |
           gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/commits > commits.json
@@ -83,13 +83,6 @@ jobs:
           base64 -w 0 pr.diff.gz > diff.b64
           echo "::add-mask::$(cat diff.b64)"
 
-          # Warn if diff is very large
-          DIFF_SIZE=$(stat -c%s pr.diff.gz)
-          MAX_SIZE=$((10*1024*1024)) # 10 MB limit
-          if (( DIFF_SIZE > MAX_SIZE )); then
-            echo "⚠️ Compressed diff size is $DIFF_SIZE bytes, may fail sending to n8n"
-          fi
-
       # -----------------------
       # 8. Debug payload size
       # -----------------------
@@ -104,6 +97,9 @@ jobs:
       # 9. Combine and send payload to n8n
       # -----------------------
       - name: Combine and send to n8n webhook
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN }}  # new environment-specific secret
         run: |
           set -e
 
@@ -112,16 +108,21 @@ jobs:
             --slurpfile files files.json \
             --slurpfile commits commits.json \
             --arg diff_base64 "$(cat diff.b64)" \
-            --arg token "${{ steps.uuid.outputs.run_token }}" \
+            --arg run_token "${{ steps.uuid.outputs.run_token }}" \
+            --arg n8n_sending_token "$N8N_SENDING_TOKEN" \
             '{
               pr: $pr[0],
               files: $files[0],
               commits: $commits[0],
               diff_base64: $diff_base64,
-              token: $token
+              token: $run_token,
+              n8n_sending_token: $n8n_sending_token
             }' > payload.json
 
-          # Check payload size before sending
+          # Mask sending token in logs
+          echo "::add-mask::$N8N_SENDING_TOKEN"
+
+          # Check payload size
           PAYLOAD_SIZE=$(stat -c%s payload.json)
           MAX_BYTES=$((10*1024*1024))
           if (( PAYLOAD_SIZE > MAX_BYTES )); then
@@ -133,7 +134,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             --data-binary @payload.json \
-            "${{ secrets.N8N_WEBHOOK_URL }}")
+            "$N8N_WEBHOOK_URL")
 
           HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
@@ -141,7 +142,7 @@ jobs:
           echo "n8n responded with status: $HTTP_STATUS"
           echo "$HTTP_BODY" > response_body.json
 
-          # Validate response token and status
+          # Validate run token
           STATUS=$(jq -r ".status" response_body.json)
           MATCHED=$(jq -r ".token" response_body.json)
           if [ "$MATCHED" != "${{ steps.uuid.outputs.run_token }}" ] || [ "$STATUS" != "completed" ]; then
@@ -178,4 +179,3 @@ jobs:
               gh pr comment "$PR_NUMBER" --body "$FORMATTED_REVIEW"
             fi
           done
-
