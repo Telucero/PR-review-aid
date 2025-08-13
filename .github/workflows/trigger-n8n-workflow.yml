@@ -156,6 +156,46 @@ jobs:
           fi
 
       # -----------------------
+      # 9b. Make response available to next job
+      # -----------------------
+      - name: Upload n8n response artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-response
+          path: response_body.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # ==========================================================
+  # Step 10 moved to a separate job under n8n-receiving env
+  # ==========================================================
+  receive-validate-and-comment:
+    runs-on: ubuntu-latest
+    needs: gather-and-send
+    environment: n8n-receiving
+    steps:
+      - name: Download n8n response
+        uses: actions/download-artifact@v4
+        with:
+          name: n8n-response
+          path: .
+
+      - name: Validate receiving token from n8n response
+        env:
+          EXPECTED_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
+        run: |
+          RECEIVED_TOKEN=$(jq -r '.receiving_token // empty' response_body.json)
+          if [ -z "$RECEIVED_TOKEN" ]; then
+            echo "❌ No receiving_token provided by n8n"
+            exit 1
+          fi
+          if [ "$RECEIVED_TOKEN" != "$EXPECTED_TOKEN" ]; then
+            echo "❌ Receiving token mismatch"
+            exit 1
+          fi
+          echo "✅ Receiving token validated successfully"
+
+      # -----------------------
       # 10. Parse verification claims and post PR comments
       # -----------------------
       - name: Parse verification claims into structured schema
