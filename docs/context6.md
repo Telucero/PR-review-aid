@@ -4,6 +4,11 @@ description: Follow this guide to use Wormhole's core protocol to publish a mult
 categories: Basics, Typescript-SDK
 ---
 
+## Next Steps
+
+- [**Get Started with Token Bridge**](/docs/products/token-bridge/get-started/){target=\_blank}: Follow this guide to start working with multichain token transfers using Wormhole Token Bridge's lock and mint mechanism to send tokens across chains.
+- [**Get Started with the Solidity SDK**](/docs/tools/solidity-sdk/get-started/){target=\_blank}: Smart contract developers can follow this on-chain integration guide to use Wormhole Solidity SDK-based sender and receiver contracts to send testnet USDC across chains.
+
 # Get Started with Messaging
 
 Wormhole's core functionality allows you to send any data packet from one supported chain to another. This guide demonstrates how to publish your first simple, arbitrary data message from an EVM environment source chain using the Wormhole TypeScript SDK's core messaging capabilities. 
@@ -94,7 +99,3 @@ Before you begin, ensure you have the following:
 
 Congratulations! You've published your first multichain message using Wormhole's TypeScript SDK and core protocol functionality. Consider the following options to build upon what you've accomplished. 
 
-## Next Steps
-
-- [**Get Started with Token Bridge**](/docs/products/token-bridge/get-started/){target=\_blank}: Follow this guide to start working with multichain token transfers using Wormhole Token Bridge's lock and mint mechanism to send tokens across chains.
-- [**Get Started with the Solidity SDK**](/docs/tools/solidity-sdk/get-started/){target=\_blank}: Smart contract developers can follow this on-chain integration guide to use Wormhole Solidity SDK-based sender and receiver contracts to send testnet USDC across chains.
