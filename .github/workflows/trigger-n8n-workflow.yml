@@ -128,10 +128,8 @@ jobs:
               n8n_sending_token: $n8n_sending_token
             }' > payload.json
 
-          # Mask sending token in logs
           echo "::add-mask::$N8N_SENDING_TOKEN"
 
-          # Check payload size
           PAYLOAD_SIZE=$(stat -c%s payload.json)
           MAX_BYTES=$((10*1024*1024))
           if (( PAYLOAD_SIZE > MAX_BYTES )); then
@@ -139,7 +137,6 @@ jobs:
             exit 1
           fi
 
-          # Send payload
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             --data-binary @payload.json \
@@ -151,7 +148,6 @@ jobs:
           echo "n8n responded with status: $HTTP_STATUS"
           echo "$HTTP_BODY" > response_body.json
 
-          # Validate run token
           STATUS=$(jq -r ".status" response_body.json)
           MATCHED=$(jq -r ".token" response_body.json)
           if [ "$MATCHED" != "${{ steps.uuid.outputs.run_token }}" ] || [ "$STATUS" != "completed" ]; then
@@ -165,7 +161,7 @@ jobs:
           fi
 
       # -----------------------
-      # 9b. Make response available to next job
+      # 9b. Upload n8n response artifact
       # -----------------------
       - name: Upload n8n response artifact
         uses: actions/upload-artifact@v4
@@ -183,13 +179,25 @@ jobs:
     needs: gather-and-send
     environment: n8n-receiving
     steps:
+      # -----------------------
+      # 1. Checkout repository (fix for gh pr comment)
+      # -----------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------
+      # 2. Download n8n response
+      # -----------------------
       - name: Download n8n response
         uses: actions/download-artifact@v4
         with:
           name: n8n-response
           path: .
 
-      - name: Validate receiving token from n8n response
+      # -----------------------
+      # 3. Validate receiving token from n8n response
+      # -----------------------
+      - name: Validate receiving token
         env:
           EXPECTED_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
         run: |
@@ -208,14 +216,13 @@ jobs:
           echo "✅ Receiving token validated successfully"
 
       # -----------------------
-      # 10. Parse verification claims and post PR comments
+      # 4. Parse verification claims and post PR comments
       # -----------------------
-      - name: Parse verification claims into structured schema
+      - name: Post PR comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RESPONSE_BODY=$(cat response_body.json)
-
           PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
           COMMENTS_JSON=$(echo "$RESPONSE_BODY" | jq -r ".comment")
 
