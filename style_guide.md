@@ -42,6 +42,8 @@ The guidelines listed in this document aren't all-inclusive but strive to cover 
   - [Diagrams](#diagrams)
   - [Screenshots](#screenshots)
   - [Terminal Output](#terminal-output)
+
+ - [Client Rule Exceptions](#client-rule-exceptions)
  
 
 ## Content Guidelines
@@ -204,6 +206,7 @@ This section of the document provides guidelines on best practices, language usa
 - Use bold formatting for:
   - When referencing UI elements
   - List items where we're listing out terms with a description. The term will be in bold. See [List Formatting](#list-formatting) for an example
+    - This should also be applied to inline code elements used in list titles
   - Sparingly can be used to highlight can't-miss, important things
 
 #### Italics
@@ -242,22 +245,24 @@ This section of the document provides guidelines on best practices, language usa
 - Use tables to represent sets of related pieces of data in a structured way
 - Table headers and values should be centered
 - Tables should be formatted. You can use a tool to format the tables, like the [Markdown Table Formatter VSCode extension](https://marketplace.visualstudio.com/items?itemName=fcrespo82.markdown-table-formatter)
+- Tables should have appropriate column names for each column when appropriate.
 
 ### List Formatting
 
 - Use ordered (numbered) lists for a sequence of steps
 - Use unordered (bulleted) lists for items that are non-sequential and can be read or completed in any order
-- For description lists, use the following formatting: `**term** - description`
+- For description lists, use the following formatting: `**term**: description`
   - Put the term in bold
-  - Use a dash (`-`) between the term and the description
-  - Do not capitalize the first word in the description, unless it's an acronym or product name that should be capitalized
-- Do not add punctuation at the end of each list item
+  - Use a dash (`:`) between the term and the description
+  - Capitalize the first word in the description, unless it's an acronym or product name that should not be capitalized
+- Add punctuation at the end of each list item, with the exception being if the sentence is not a complete sentence, nor if the sentence does not start with a verb. 
 
 ### Links
 
 - Add `{target=\_blank}` to all links, except links to other sections on the same page
 - Use descriptive link text; avoid using "this", "here", and other generic words in the link text
 - Links do not require any in-line formatting, such as bold, italics, or underlining. Depending on the project and the design, links might be underlined, but that will be managed using CSS
+- For links used with bolded terms, the astrisks must surround the entire link and term like so `**[term](link)**`
 
 ## Code Guidelines
 
@@ -441,3 +446,12 @@ Terminal snippets are styled HTML elements:
   <span data-ty="input"><span class="file-path"></span></span>
 </div>
 ```
+
+### Client Rule Exceptions 
+
+####kluster 
+- Use sentence case for titles/headers (instead of title case)
+- Never capitalize kluster, with the exception of some code-related references to kluster. For example, the name of the Kluster-Verify-Code-MCP MCP configuration
+
+####Wormhole:
+- Don't capitalize MainNet and TestNet; should always be mainnet and testnet
