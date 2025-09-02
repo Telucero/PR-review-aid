@@ -253,7 +253,7 @@ This section of the document provides guidelines on best practices, language usa
 - Use unordered (bulleted) lists for items that are non-sequential and can be read or completed in any order
 - For description lists, use the following formatting: `**term**: description`
   - Put the term in bold
-  - Use a dash (`:`) between the term and the description
+  - Use a colon (`:`) between the term and the description
   - Capitalize the first word in the description, unless it's an acronym or product name that should not be capitalized
 - Add punctuation at the end of each list item, with the exception being if the sentence is not a complete sentence, nor if the sentence does not start with a verb. 
 
@@ -262,7 +262,7 @@ This section of the document provides guidelines on best practices, language usa
 - Add `{target=\_blank}` to all links, except links to other sections on the same page
 - Use descriptive link text; avoid using "this", "here", and other generic words in the link text
 - Links do not require any in-line formatting, such as bold, italics, or underlining. Depending on the project and the design, links might be underlined, but that will be managed using CSS
-- For links used with bolded terms, the astrisks must surround the entire link and term like so `**[term](link)**`
+- For links used with bolded terms, the astrisks must surround the entire link and term like so `**[term](link)**` and don't forget to add `{target=\_blank}` if the link leaves the current page. 
 
 ## Code Guidelines
 
