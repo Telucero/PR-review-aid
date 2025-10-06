@@ -1,0 +1,56 @@
+{
+  "exceptions": {
+    "Datahaven": {
+      "rules": [
+        {
+          "rule_number": 1,
+          "description": "No specific exceptions listed"
+        }
+      ]
+    },
+    "Kluster": {
+      "rules": [
+        {
+          "rule_number": 1,
+          "description": "Use sentence case for titles/headers (instead of title case or Chicago style)."
+        },
+        {
+          "rule_number": 2,
+          "description": "Never capitalize 'kluster,' except in code-related references (e.g., 'Kluster-Verify-Code-MCP MCP configuration')."
+        }
+      ]
+    },
+    "Moonbeam": {
+      "rules": [
+        {
+          "rule_number": 1,
+          "description": "No specific exceptions listed"
+        }
+      ]
+    },
+    "Polkadot": {
+      "rules": [
+        {
+          "rule_number": 1,
+          "description": "No specific exceptions listed"
+        }
+      ]
+    },
+    "Tanssi": {
+      "rules": [
+        {
+          "rule_number": 1,
+          "description": "No specific exceptions listed"
+        }
+      ]
+    },
+    "Wormhole": {
+      "rules": [
+        {
+          "rule_number": 1,
+          "description": "Do not capitalize MainNet and TestNet; should always be 'mainnet' and 'testnet.'"
+        }
+      ]
+    }
+  }
+}
