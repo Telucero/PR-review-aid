@@ -390,3 +390,5 @@ Terminal snippets are styled HTML elements:
   <span data-ty="input"><span class="file-path"></span></span>
 </div>
 ```
+
+hi this is a test
