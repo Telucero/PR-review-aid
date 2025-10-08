@@ -171,52 +171,42 @@ jobs:
     needs: gather-and-send
     environment: n8n-receiving
     steps:
-      
-      # 1. Checkout repository (fix for gh pr comment)
-      
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      
       # 2. Download n8n response
-      
       - name: Download n8n response
         uses: actions/download-artifact@v4
         with:
           name: n8n-response
           path: .
 
-      
-      # 3. Validate receiving token from n8n response
-      
+      # 3. Validate receiving token
       - name: Validate receiving token
         env:
           EXPECTED_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
         run: |
           RECEIVED_TOKEN=$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' response_body.json)
-
           if [ -z "$RECEIVED_TOKEN" ]; then
             echo "No receiving_token provided by n8n"
             exit 1
           fi
-
           if [ "$RECEIVED_TOKEN" != "$EXPECTED_TOKEN" ]; then
             echo "Receiving token mismatch"
             exit 1
           fi
-
           echo "✅ Receiving token validated successfully"
 
-      # 4. Parse verification claims and post PR comments
-    
+      # 4. Post PR summary comments
       - name: Post PR comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           RESPONSE_BODY=$(cat response_body.json)
           PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
 
-          # Post style guide suggestions as a review
           STYLE_GUIDE=$(echo "$RESPONSE_BODY" | jq -c '.comment[] | select(.formattedReview | test("Style Guide Violations Summary"))')
           if [ -n "$STYLE_GUIDE" ]; then
             STYLE_GUIDE_BODY=$(echo "$STYLE_GUIDE" | jq -r '.formattedReview')
@@ -224,10 +214,48 @@ jobs:
             gh pr review "$PR_NUMBER" --body "$STYLE_GUIDE_BODY" --comment
           fi
 
-          # Post verification section as a normal comment (or as review if preferred)
           VERIFICATION=$(echo "$RESPONSE_BODY" | jq -c '.comment[] | select(.formattedReview | test("Verification Review"))')
           if [ -n "$VERIFICATION" ]; then
             VERIFICATION_BODY=$(echo "$VERIFICATION" | jq -r '.formattedReview')
             echo "Posting verification feedback to PR #$PR_NUMBER..."
             gh pr comment "$PR_NUMBER" --body "$VERIFICATION_BODY"
           fi
+
+      # 5. Post inline code suggestions (robust error handling)
+      - name: Post inline suggestions via API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -e
+          RESPONSE_BODY=$(cat response_body.json)
+          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r '.pr_number')
+          HEAD_SHA=$(GH_TOKEN="${GH_TOKEN}" gh pr view "$PR_NUMBER" --json headRefOid -q '.headRefOid')
+
+          echo "$RESPONSE_BODY" | jq -c '.comment[]' | while read -r COMMENT; do
+            FILE_PATH=$(echo "$COMMENT" | jq -r '.file_path')
+            LINE_NUMBER=$(echo "$COMMENT" | jq -r '.line_number')
+            CORRECTION=$(echo "$COMMENT" | jq -r '.correction')
+            COMMENT_BODY=$(printf "``````" "$CORRECTION")
+
+            COMMENT_PAYLOAD=$(jq -n \
+              --arg body "$COMMENT_BODY" \
+              --arg commit_id "$HEAD_SHA" \
+              --arg path "$FILE_PATH" \
+              --argjson line "$LINE_NUMBER" \
+              --arg side "RIGHT" \
+              '{body: $body, commit_id: $commit_id, path: $path, line: $line, side: $side}')
+
+            RESPONSE=$(curl -sS -w "%{http_code}" -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments" \
+              -d "$COMMENT_PAYLOAD")
+
+            HTTP_STATUS="${RESPONSE:(-3)}"
+            if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+              echo "❌ Inline suggestion failed for $FILE_PATH at line $LINE_NUMBER (HTTP $HTTP_STATUS)"
+              exit 1
+            fi
+          done
+          echo "✅ All inline suggestions posted successfully"
