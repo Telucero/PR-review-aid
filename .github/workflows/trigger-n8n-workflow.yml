@@ -259,4 +259,3 @@ jobs:
             fi
           done
           echo "✅ All inline suggestions posted successfully"
-          
