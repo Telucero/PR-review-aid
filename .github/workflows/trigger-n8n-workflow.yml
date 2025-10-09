@@ -252,3 +252,40 @@ jobs:
           echo "$OBJ" | jq -r '.skipped_comments // [] | .[] | "\(.file_path // "-")#L\(.line_number // "-"): \(.reason // "-")"'
 
           echo "✅ Done. Suggestions posted: $posted"
+
+        # Post verification comments (if present)
+      - name: Post verification comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          RESPONSE_BODY=$(cat response_body.json)
+          OBJ=$(echo "$RESPONSE_BODY" | jq -c 'if type=="array" then .[0] else . end')
+
+          PR=$(echo "$OBJ" | jq -r '.pr_number // empty')
+          if [ -z "$PR" ]; then
+            echo "ℹ️ No PR number in payload; skipping verification comments."
+            exit 0
+          fi
+
+          # Collect verification formatted reviews from .reviews[]
+          VERIFS=$(echo "$OBJ" | jq -c '
+            (.reviews // [])
+            | map(select((.type? // "") == "verification" and (.formattedReview? != null)))
+            | map(.formattedReview)
+          ')
+
+          COUNT=$(echo "$VERIFS" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ℹ️ No verification reviews found; skipping."
+            exit 0
+          fi
+
+          echo "🔎 Found $COUNT verification review(s). Posting…"
+          idx=0
+          echo "$VERIFS" | jq -r '.[]' | while IFS= read -r BODY; do
+            gh pr comment "$PR" --body "$BODY"
+            idx=$((idx+1))
+            echo "✅ Posted verification review #$idx"
+          done
