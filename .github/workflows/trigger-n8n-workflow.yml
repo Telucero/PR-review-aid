@@ -222,74 +222,32 @@ jobs:
           fi
 
       # 5. Post inline code suggestions (robust error handling)
-      - name: Post inline suggestions via API
+      - name: Post inline suggestions via API (final)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-
           RESPONSE_BODY=$(cat response_body.json)
+          OBJ=$(echo "$RESPONSE_BODY" | jq -c 'if type=="array" then .[0] else . end')
 
-          # Handle array-or-object payload shapes
-          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].pr_number else .pr_number end // empty')
-          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
-            echo "❌ Could not read pr_number from response_body.json"
-            jq . response_body.json || true
-            exit 1
-          fi
+          [ "$(echo "$OBJ" | jq -r '.status')" = "completed" ] || { echo "❌ not completed"; exit 1; }
 
-          # Get HEAD SHA of the PR
-          HEAD_SHA=$(GH_TOKEN="${GH_TOKEN}" gh pr view "$PR_NUMBER" --json headRefOid -q '.headRefOid')
-          if [ -z "$HEAD_SHA" ] || [ "$HEAD_SHA" = "null" ]; then
-            echo "❌ Could not resolve HEAD SHA for PR #$PR_NUMBER"
-            exit 1
-          fi
+          OWNER=$(echo "$OBJ" | jq -r '.repo_owner')
+          REPO=$(echo "$OBJ" | jq -r '.repo_name')
+          PR=$(echo "$OBJ" | jq -r '.pr_number')
 
-          # Produce a normalized stream of comment objects whether root is array or object
-          echo "$RESPONSE_BODY" | jq -c '
-            (if type=="array" then .[0] else . end)
-            | .comment // []
-            | .[]
-          ' | while read -r COMMENT; do
-            FILE_PATH=$(echo "$COMMENT"   | jq -r '.file_path // empty')
-            LINE_NUMBER=$(echo "$COMMENT" | jq -r '.line_number // empty')
-            CORRECTION=$(echo "$COMMENT"  | jq -r '.correction // empty')
-
-            # Validate required fields
-            if [ -z "$FILE_PATH" ] || [ -z "$LINE_NUMBER" ] || [ -z "$CORRECTION" ]; then
-              echo "⚠️  Skipping one comment due to missing fields:"
-              echo "$COMMENT" | jq .
-              continue
-            fi
-
-            # Build a proper GitHub suggestion block
-            COMMENT_BODY=$(printf '```suggestion\n%s\n```' "$CORRECTION")
-
-            COMMENT_PAYLOAD=$(jq -n \
-              --arg body "$COMMENT_BODY" \
-              --arg commit_id "$HEAD_SHA" \
-              --arg path "$FILE_PATH" \
-              --arg side "RIGHT" \
-              --argjson line "$LINE_NUMBER" \
-              '{body:$body, commit_id:$commit_id, path:$path, side:$side, line:$line}'
-            )
-
-            RESPONSE=$(curl -sS -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer '"$GH_TOKEN"'" \
+          echo "$OBJ" | jq -c '.prepared_comment_payloads[]?' | while read -r PAYLOAD; do
+            RESP=$(curl -sS -w "%{http_code}" -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments" \
-              -d "$COMMENT_PAYLOAD")
-
-            HTTP_STATUS="${RESPONSE:(-3)}"
-            if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
-              echo "❌ Inline suggestion failed for $FILE_PATH at line $LINE_NUMBER (HTTP $HTTP_STATUS)"
-              # Print response body (minus the status suffix) to help debug
-              echo "${RESPONSE%$HTTP_STATUS}"
-              exit 1
-            else
-              echo "✅ Posted suggestion: $FILE_PATH#L$LINE_NUMBER"
+              "https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/comments" \
+              -d "$PAYLOAD")
+            CODE="${RESP:(-3)}"
+            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
+              echo "❌ HTTP $CODE"; echo "${RESP%$CODE}"; exit 1
             fi
+            echo "✅ Posted"
           done
 
-          echo "✅ All inline suggestions posted successfully"
+          echo "—— Skipped (for logs) ——"
+          echo "$OBJ" | jq -r '.skipped_comments // [] | .[] | "\(.file_path)#L\(.line_number): \(.reason)"'
