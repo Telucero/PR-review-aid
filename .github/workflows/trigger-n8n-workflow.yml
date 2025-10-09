@@ -198,30 +198,7 @@ jobs:
           fi
           echo "✅ Receiving token validated successfully"
 
-      # 4. Post PR summary comments
-      - name: Post PR comments
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -e
-          RESPONSE_BODY=$(cat response_body.json)
-          PR_NUMBER=$(echo "$RESPONSE_BODY" | jq -r ".pr_number")
-
-          STYLE_GUIDE=$(echo "$RESPONSE_BODY" | jq -c '.comment[] | select(.formattedReview | test("Style Guide Violations Summary"))')
-          if [ -n "$STYLE_GUIDE" ]; then
-            STYLE_GUIDE_BODY=$(echo "$STYLE_GUIDE" | jq -r '.formattedReview')
-            echo "Posting style guide suggestions to PR #$PR_NUMBER..."
-            gh pr review "$PR_NUMBER" --body "$STYLE_GUIDE_BODY" --comment
-          fi
-
-          VERIFICATION=$(echo "$RESPONSE_BODY" | jq -c '.comment[] | select(.formattedReview | test("Verification Review"))')
-          if [ -n "$VERIFICATION" ]; then
-            VERIFICATION_BODY=$(echo "$VERIFICATION" | jq -r '.formattedReview')
-            echo "Posting verification feedback to PR #$PR_NUMBER..."
-            gh pr comment "$PR_NUMBER" --body "$VERIFICATION_BODY"
-          fi
-
-      # 5. Post inline code suggestions (robust error handling)
+      # 4. Post inline code suggestions (robust error handling)
       - name: Post inline suggestions via API (final)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
