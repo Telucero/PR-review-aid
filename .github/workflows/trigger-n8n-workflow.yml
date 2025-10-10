@@ -272,25 +272,34 @@ jobs:
 
           RESPONSE_BODY=$(cat response_body.json)
 
-          # Build VERIFS directly from the raw payload; normalize inside jq
+          # Extract verification review markdown robustly from many shapes
           VERIFS=$(
             echo "$RESPONSE_BODY" | jq -c '
               (if type=="array" then .[0] else . end) as $o
-              | [
-                  # Preferred shape: reviews[] with type == "verification"
-                  ($o.reviews // [])
-                  | map(select(((.type? | tostring | ascii_downcase) == "verification")))
-                  | map(.formattedReview // .review // .body // .comment // ""),
-                  # Fallback single-string fields
-                  ($o.verification // empty),
-                  ($o.verification_review // empty),
-                  # Alternate shape: reviews[] with category == "verification"
-                  ($o.reviews // [])
-                  | map(select(((.category? | tostring | ascii_downcase) == "verification")))
-                  | map(.text // .content // "")
-                ]
-                | flatten
-                | map(select(type == "string" and (.|length) > 0))
+              | def to_arr(x):
+                  if (x|type) == "array" then x
+                  elif (x|type) == "object" then [x]
+                  elif (x|type) == "string" then (try (x|fromjson) catch [])
+                  else [] end;
+
+              [
+                # Common direct locations
+                (to_arr($o.reviews) // []) as $r1
+                  | ($r1 | map(select(((.type? | tostring | ascii_downcase) == "verification")))
+                            | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
+                (to_arr($o.review) // []) as $r2
+                  | ($r2 | map(select(((.type? | tostring | ascii_downcase) == "verification")))
+                            | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
+
+                # Anywhere in the object tree: find objects with type=verification
+                ($o | .. | objects
+                  | select(((.type? | tostring | ascii_downcase) == "verification"))
+                  | (.formattedReview // .review // .body // .comment // .text // .content // ""))
+
+              ]
+              | flatten
+              | map(select(type == "string" and (.|length) > 0))
+              | unique
             '
           )
 
@@ -300,7 +309,7 @@ jobs:
             exit 0
           fi
 
-          # Extract repo context separately (robust to array/object root)
+          # Extract repo context (robust to array/object root)
           OWNER=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_owner else .repo_owner end // empty')
           REPO=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_name else .repo_name end // empty')
           PR=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].pr_number else .pr_number end // empty')
@@ -310,11 +319,12 @@ jobs:
             exit 0
           fi
 
-          echo "🔎 Found $COUNT verification review(s). Posting…"
+          echo "🔎 Found $COUNT verification review(s). Preview:"
+          echo "$VERIFS" | jq -r 'to_entries[] | "\(.key): " + (.value | .[0:160] + (if length>160 then "…" else "" end))'
 
-          # NUL-delimited to preserve each multi-line markdown block intact
+          # Post each block as a PR comment (not inline)
           echo "$VERIFS" | jq -r '.[] + "\u0000"' | while IFS= read -r -d '' BODY; do
-            # Skip truly empty (defense-in-depth)
+            # Skip truly empty
             if [ -z "${BODY//[$'\t\r\n ']}" ]; then
               echo "⚠️ Skipping empty verification body"
               continue
@@ -335,8 +345,8 @@ jobs:
               exit 1
             fi
 
-            echo "✅ Posted verification review"
+            url=$(echo "$RBODY" | jq -r '.html_url // empty')
+            echo "✅ Posted verification review ${url:+→ $url}"
           done
 
           echo "✅ Done posting verification reviews."
-
