@@ -271,33 +271,28 @@ jobs:
           set -euo pipefail
 
           RESPONSE_BODY=$(cat response_body.json)
-          OBJ=$(echo "$RESPONSE_BODY" | jq -c 'if type=="array" then .[0] else . end')
 
-          OWNER=$(echo "$OBJ" | jq -r '.repo_owner // empty')
-          REPO=$(echo "$OBJ" | jq -r '.repo_name // empty')
-          PR=$(echo "$OBJ" | jq -r '.pr_number // empty')
-          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
-            echo "ℹ️ Missing repo context; skipping verification comments."
-            exit 0
-          fi
-
-          # Collect verification formatted reviews from multiple possible fields, normalized to array of strings
-          VERIFS=$(echo "$OBJ" | jq -c '
-            [
-              # Preferred
-              (.reviews // [])
-              | map(select((.type? | ascii_downcase) == "verification"))
-              | map(.formattedReview // .review // .body // .comment // ""),
-              # Fallbacks
-              (.verification // empty),
-              (.verification_review // empty),
-              (.reviews // [])
-              | map(select((.category? | ascii_downcase) == "verification"))
-              | map(.text // .content // "")
-            ]
-            | flatten
-            | map(select(. != "" and . != null))
-          ')
+          # Build VERIFS directly from the raw payload; normalize inside jq
+          VERIFS=$(
+            echo "$RESPONSE_BODY" | jq -c '
+              (if type=="array" then .[0] else . end) as $o
+              | [
+                  # Preferred shape: reviews[] with type == "verification"
+                  ($o.reviews // [])
+                  | map(select(((.type? | tostring | ascii_downcase) == "verification")))
+                  | map(.formattedReview // .review // .body // .comment // ""),
+                  # Fallback single-string fields
+                  ($o.verification // empty),
+                  ($o.verification_review // empty),
+                  # Alternate shape: reviews[] with category == "verification"
+                  ($o.reviews // [])
+                  | map(select(((.category? | tostring | ascii_downcase) == "verification")))
+                  | map(.text // .content // "")
+                ]
+                | flatten
+                | map(select(type == "string" and (.|length) > 0))
+            '
+          )
 
           COUNT=$(echo "$VERIFS" | jq 'length')
           if [ "$COUNT" -eq 0 ]; then
@@ -305,9 +300,19 @@ jobs:
             exit 0
           fi
 
+          # Extract repo context separately (robust to array/object root)
+          OWNER=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_owner else .repo_owner end // empty')
+          REPO=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_name else .repo_name end // empty')
+          PR=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].pr_number else .pr_number end // empty')
+
+          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
+            echo "ℹ️ Missing repo context; skipping verification comments."
+            exit 0
+          fi
+
           echo "🔎 Found $COUNT verification review(s). Posting…"
 
-          # NUL-delimited to preserve multi-line markdown safely
+          # NUL-delimited to preserve each multi-line markdown block intact
           echo "$VERIFS" | jq -r '.[] + "\u0000"' | while IFS= read -r -d '' BODY; do
             # Skip truly empty (defense-in-depth)
             if [ -z "${BODY//[$'\t\r\n ']}" ]; then
