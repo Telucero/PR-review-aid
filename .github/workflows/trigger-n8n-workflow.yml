@@ -352,29 +352,4 @@ jobs:
 
           echo "✅ Done posting verification reviews."
 
-      - name: Delete n8n response artifact (immediately cleanup)
-        if: always()   # still delete even if a prior step failed
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          ARTIFACT_NAME: n8n-response
-        run: |
-          echo "::group::Deleting artifact $ARTIFACT_NAME"
-          set -euo pipefail
-
-          # Find artifact ID for this run & name
-          ART_JSON="$(gh api -H "Accept: application/vnd.github+json" \
-            /repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100)"
-          ART_ID="$(printf '%s' "$ART_JSON" | jq -r --arg n "$ARTIFACT_NAME" \
-            '.artifacts[] | select(.name==$n) | .id' | head -n1)"
-
-          if [ -n "${ART_ID:-}" ] && [ "$ART_ID" != "null" ]; then
-            gh api -X DELETE -H "Accept: application/vnd.github+json" \
-              /repos/$REPO/actions/artifacts/$ART_ID >/dev/null
-            echo "Deleted artifact id=$ART_ID"
-          else
-            echo "Artifact '$ARTIFACT_NAME' not found for this run (already deleted or never created)."
-          fi
-
-          echo "::endgroup::"
+     
