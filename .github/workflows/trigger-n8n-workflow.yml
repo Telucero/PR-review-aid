@@ -156,12 +156,24 @@ jobs:
       # 9b. Upload n8n response artifact
       
       - name: Upload n8n response artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: n8n-response
-          path: response_body.json
-          if-no-files-found: error
-          retention-days: 1
+        run: |
+          echo "::group::Uploading n8n response artifact (hidden logs)"
+          set -e
+          # Ensure gh CLI is available
+          if ! command -v gh >/dev/null; then
+            echo "Installing GitHub CLI..."
+            sudo apt-get update -qq && sudo apt-get install -y gh -qq
+          fi
+          
+          # Upload artifact quietly (no noisy Azure output)
+          gh run upload-artifact \
+            -n n8n-response \
+            response_body.json >/dev/null 2>&1 || {
+              echo "⚠️ Fallback: could not upload artifact via CLI"
+              exit 1
+            }
+
+          echo "::endgroup::"
 
   
   # Step 10 moved to a separate job under n8n-receiving env
@@ -177,10 +189,25 @@ jobs:
 
       # 2. Download n8n response
       - name: Download n8n response
-        uses: actions/download-artifact@v4
-        with:
-          name: n8n-response
-          path: .
+        run: |
+          echo "::group::Downloading n8n response artifact (hidden logs)"
+          set -e
+          # Ensure gh CLI is available
+          if ! command -v gh >/dev/null; then
+            echo "Installing GitHub CLI..."
+            sudo apt-get update -qq && sudo apt-get install -y gh -qq
+          fi
+
+          # Download artifact quietly (no blob URLs printed)
+          gh run download-artifact \
+            -n n8n-response \
+            -D . >/dev/null 2>&1 || {
+              echo "⚠️ Fallback: could not download artifact via CLI"
+              exit 1
+            }
+
+          echo "::endgroup::"
+
 
       # 3. Validate receiving token
       - name: Validate receiving token
