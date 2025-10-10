@@ -198,7 +198,7 @@ jobs:
           fi
           echo "✅ Receiving token validated successfully"
 
-      # 4. Post inline code suggestions (robust error handling)
+      # 4. Post inline code suggestions (robust; supports deletions)
       - name: Post inline suggestions via API (final)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -228,6 +228,13 @@ jobs:
 
           posted=0
           echo "$OBJ" | jq -c '.prepared_comment_payloads // [] | .[]' | while read -r PAYLOAD; do
+            # Ensure commit_id exists (avoid 422)
+            CID=$(echo "$PAYLOAD" | jq -r '.commit_id // empty')
+            if [ -z "$CID" ]; then
+              echo "⚠️  Skipping payload without commit_id"
+              continue
+            fi
+
             # If body is empty/whitespace, replace with an empty suggestion block (deletion)
             BODY_TXT=$(echo "$PAYLOAD" | jq -r '.body // ""')
             if [ -z "${BODY_TXT//[$'\t\r\n ']}" ]; then
@@ -257,7 +264,6 @@ jobs:
 
           echo "✅ Done. Suggestions posted: $posted"
 
-
       - name: Post verification comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -267,13 +273,15 @@ jobs:
           RESPONSE_BODY=$(cat response_body.json)
           OBJ=$(echo "$RESPONSE_BODY" | jq -c 'if type=="array" then .[0] else . end')
 
+          OWNER=$(echo "$OBJ" | jq -r '.repo_owner // empty')
+          REPO=$(echo "$OBJ" | jq -r '.repo_name // empty')
           PR=$(echo "$OBJ" | jq -r '.pr_number // empty')
-          if [ -z "$PR" ]; then
-            echo "No PR number in payload; skipping verification comments."
+          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
+            echo "ℹ️ Missing repo context; skipping verification comments."
             exit 0
           fi
 
-          # Collect verification formatted reviews from multiple possible fields
+          # Collect verification formatted reviews from multiple possible fields, normalized to array of strings
           VERIFS=$(echo "$OBJ" | jq -c '
             [
               # Preferred
@@ -293,20 +301,37 @@ jobs:
 
           COUNT=$(echo "$VERIFS" | jq 'length')
           if [ "$COUNT" -eq 0 ]; then
-            echo "No verification reviews found; skipping."
+            echo "ℹ️ No verification reviews found; skipping."
             exit 0
           fi
 
-          echo "Found $COUNT verification review(s). Posting…"
+          echo "🔎 Found $COUNT verification review(s). Posting…"
 
-          # Iterate by index to keep each markdown block intact
-          for ((i=0; i<COUNT; i++)); do
-            BODY=$(echo "$VERIFS" | jq -r ".[$i]")
-            # Skip if body is effectively empty (spaces/newlines only)
+          # NUL-delimited to preserve multi-line markdown safely
+          echo "$VERIFS" | jq -r '.[] + "\u0000"' | while IFS= read -r -d '' BODY; do
+            # Skip truly empty (defense-in-depth)
             if [ -z "${BODY//[$'\t\r\n ']}" ]; then
-              echo "Skipping empty verification body at index $i"
+              echo "⚠️ Skipping empty verification body"
               continue
             fi
-            gh pr comment "$PR" --body "$BODY"
-            echo "Posted verification review #$((i+1))"
+
+            RESP=$(curl -sS -w "%{http_code}" -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${OWNER}/${REPO}/issues/${PR}/comments" \
+              -d "$(jq -nc --arg b "$BODY" '{body:$b}')")
+
+            CODE="${RESP:(-3)}"
+            RBODY="${RESP%$CODE}"
+
+            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
+              echo "❌ Failed to post verification comment (HTTP $CODE)"
+              echo "$RBODY"
+              exit 1
+            fi
+
+            echo "✅ Posted verification review"
           done
+
+          echo "✅ Done posting verification reviews."
+
