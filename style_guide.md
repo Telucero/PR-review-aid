@@ -108,64 +108,13 @@ This section of the document provides guidelines on best practices, language usa
     3. Example: See the next section to understand how slash amounts for equivocations are calculated.
 
 - Use bulleted lists for key points and complex information and to break up walls of text (general readability).
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Use numbered lists for step-by-step instructions and sequential items.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
-
 ### Things to avoid 
 - Avoid casual language or slang.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
-
-- Avoid unnecessary jargon and ambiguity.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
+- Avoid unnecessary jargon and ambiguity. 
 - Avoid biases, opinions, or emotional language.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Avoid assuming the reader already knows what you're talking about.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Avoid sounding like a sales pitch.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 
 ### Language
 
@@ -441,3 +390,5 @@ Terminal snippets are styled HTML elements:
   <span data-ty="input"><span class="file-path"></span></span>
 </div>
 ```
+
+hi this is a test
