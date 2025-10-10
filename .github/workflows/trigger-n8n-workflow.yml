@@ -156,24 +156,12 @@ jobs:
       # 9b. Upload n8n response artifact
       
       - name: Upload n8n response artifact
-        run: |
-          echo "::group::Uploading n8n response artifact (hidden logs)"
-          set -e
-          # Ensure gh CLI is available
-          if ! command -v gh >/dev/null; then
-            echo "Installing GitHub CLI..."
-            sudo apt-get update -qq && sudo apt-get install -y gh -qq
-          fi
-          
-          # Upload artifact quietly (no noisy Azure output)
-          gh run upload-artifact \
-            -n n8n-response \
-            response_body.json >/dev/null 2>&1 || {
-              echo "⚠️ Fallback: could not upload artifact via CLI"
-              exit 1
-            }
-
-          echo "::endgroup::"
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-response
+          path: response_body.json
+          if-no-files-found: error
+          retention-days: 1
 
   
   # Step 10 moved to a separate job under n8n-receiving env
@@ -189,24 +177,10 @@ jobs:
 
       # 2. Download n8n response
       - name: Download n8n response
-        run: |
-          echo "::group::Downloading n8n response artifact (hidden logs)"
-          set -e
-          # Ensure gh CLI is available
-          if ! command -v gh >/dev/null; then
-            echo "Installing GitHub CLI..."
-            sudo apt-get update -qq && sudo apt-get install -y gh -qq
-          fi
-
-          # Download artifact quietly (no blob URLs printed)
-          gh run download-artifact \
-            -n n8n-response \
-            -D . >/dev/null 2>&1 || {
-              echo "⚠️ Fallback: could not download artifact via CLI"
-              exit 1
-            }
-
-          echo "::endgroup::"
+        uses: actions/download-artifact@v4
+        with:
+          name: n8n-response
+          path: .
 
 
       # 3. Validate receiving token
@@ -377,3 +351,30 @@ jobs:
           done
 
           echo "✅ Done posting verification reviews."
+
+      - name: Delete n8n response artifact (immediately cleanup)
+        if: always()   # still delete even if a prior step failed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          ARTIFACT_NAME: n8n-response
+        run: |
+          echo "::group::Deleting artifact $ARTIFACT_NAME"
+          set -euo pipefail
+
+          # Find artifact ID for this run & name
+          ART_JSON="$(gh api -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100)"
+          ART_ID="$(printf '%s' "$ART_JSON" | jq -r --arg n "$ARTIFACT_NAME" \
+            '.artifacts[] | select(.name==$n) | .id' | head -n1)"
+
+          if [ -n "${ART_ID:-}" ] && [ "$ART_ID" != "null" ]; then
+            gh api -X DELETE -H "Accept: application/vnd.github+json" \
+              /repos/$REPO/actions/artifacts/$ART_ID >/dev/null
+            echo "Deleted artifact id=$ART_ID"
+          else
+            echo "Artifact '$ARTIFACT_NAME' not found for this run (already deleted or never created)."
+          fi
+
+          echo "::endgroup::"
