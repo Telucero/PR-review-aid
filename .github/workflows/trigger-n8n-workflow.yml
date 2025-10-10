@@ -206,8 +206,6 @@ jobs:
           set -euo pipefail
 
           RESPONSE_BODY=$(cat response_body.json)
-
-          # Normalize array/object root
           OBJ=$(echo "$RESPONSE_BODY" | jq -c 'if type=="array" then .[0] else . end')
 
           STATUS=$(echo "$OBJ" | jq -r '.status // empty')
@@ -230,6 +228,12 @@ jobs:
 
           posted=0
           echo "$OBJ" | jq -c '.prepared_comment_payloads // [] | .[]' | while read -r PAYLOAD; do
+            # If body is empty/whitespace, replace with an empty suggestion block (deletion)
+            BODY_TXT=$(echo "$PAYLOAD" | jq -r '.body // ""')
+            if [ -z "${BODY_TXT//[$'\t\r\n ']}" ]; then
+              PAYLOAD=$(echo "$PAYLOAD" | jq --rawfile emptySug <(printf '```suggestion\n```\n') '.body = $emptySug')
+            fi
+
             RESP=$(curl -sS -w "%{http_code}" -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github.v3+json" \
@@ -253,7 +257,7 @@ jobs:
 
           echo "✅ Done. Suggestions posted: $posted"
 
-        # Post verification comments (if present)
+
       - name: Post verification comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -265,27 +269,44 @@ jobs:
 
           PR=$(echo "$OBJ" | jq -r '.pr_number // empty')
           if [ -z "$PR" ]; then
-            echo "ℹ️ No PR number in payload; skipping verification comments."
+            echo "No PR number in payload; skipping verification comments."
             exit 0
           fi
 
-          # Collect verification formatted reviews from .reviews[]
+          # Collect verification formatted reviews from multiple possible fields
           VERIFS=$(echo "$OBJ" | jq -c '
-            (.reviews // [])
-            | map(select((.type? // "") == "verification" and (.formattedReview? != null)))
-            | map(.formattedReview)
+            [
+              # Preferred
+              (.reviews // [])
+              | map(select((.type? | ascii_downcase) == "verification"))
+              | map(.formattedReview // .review // .body // .comment // ""),
+              # Fallbacks
+              (.verification // empty),
+              (.verification_review // empty),
+              (.reviews // [])
+              | map(select((.category? | ascii_downcase) == "verification"))
+              | map(.text // .content // "")
+            ]
+            | flatten
+            | map(select(. != "" and . != null))
           ')
 
           COUNT=$(echo "$VERIFS" | jq 'length')
           if [ "$COUNT" -eq 0 ]; then
-            echo "ℹ️ No verification reviews found; skipping."
+            echo "No verification reviews found; skipping."
             exit 0
           fi
 
-          echo "🔎 Found $COUNT verification review(s). Posting…"
-          idx=0
-          echo "$VERIFS" | jq -r '.[]' | while IFS= read -r BODY; do
+          echo "Found $COUNT verification review(s). Posting…"
+
+          # Iterate by index to keep each markdown block intact
+          for ((i=0; i<COUNT; i++)); do
+            BODY=$(echo "$VERIFS" | jq -r ".[$i]")
+            # Skip if body is effectively empty (spaces/newlines only)
+            if [ -z "${BODY//[$'\t\r\n ']}" ]; then
+              echo "Skipping empty verification body at index $i"
+              continue
+            fi
             gh pr comment "$PR" --body "$BODY"
-            idx=$((idx+1))
-            echo "✅ Posted verification review #$idx"
+            echo "Posted verification review #$((i+1))"
           done
