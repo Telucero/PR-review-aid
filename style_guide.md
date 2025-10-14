@@ -206,7 +206,8 @@ This section of the document provides guidelines on best practices, language usa
   - Put the term in bold
   - Use a colon (`:`) between the term and the description
   - Capitalize the first word in the description, unless it's an acronym or product name that should not be capitalized
-- Add punctuation at the end of each list item, with the exception being if the sentence is not a complete sentence, nor if the sentence does not start with a verb. 
+- Add punctuation at the end of each list item, with the exception being if the sentence is not a complete sentence, nor if the sentence does not start with a verb.
+- Lists should all follow a similar format and sentence structure, one should not start with a verb while the other are full and complex sentences. One should not be long while the other are short.  
 
 ### Links
 
@@ -232,6 +233,7 @@ This section of the document outlines guidelines for code formatting and convent
   ```py
   ```solidity
   ```
+  
 
 #### Code Formatting by Language
 
@@ -244,6 +246,29 @@ This section of the document outlines guidelines for code formatting and convent
 |   Quote Type    |              single              |              double              |                      double                      |                                                         double                                                          |
 | Trailing Comma  |               true               |              false               |                       true                       |                                                          false                                                          |
 |    Semicolon    |               true               |              false               |                      false                       |                                                          false                                                          |
+### Prettier Formatting 
+All files that are floowing the below naming conventions must follow these formatting rules.
+ 
+  [*.ts]
+  indent_style=space
+  indent_size=2
+  max_line_length=80
+  quote_type=single
+  
+  [*.js]
+  indent_style=space
+  indent_size=2
+  max_line_length=80
+  quote_type=single
+  
+  [*.json]
+  indent_style=space
+  indent_size=4
+  max_line_length=80
+  quote_type=double
+  
+  [*.html]
+  max_line_length=off
 
 ### Variable Conventions
 
@@ -387,6 +412,7 @@ This section of the document outlines guidelines for visual aids, such as images
 - Show the command that was run
 - Show the output of running that command
 - If the terminal output concludes without requiring user input, returning you to the command prompt to enter the next command, show the blank command prompt
+- Emojis in certain instace like in terminal output are allowed 
 
 Terminal snippets are styled HTML elements:
 
@@ -398,3 +424,5 @@ Terminal snippets are styled HTML elements:
   <span data-ty="input"><span class="file-path"></span></span>
 </div>
 ```
+
+
