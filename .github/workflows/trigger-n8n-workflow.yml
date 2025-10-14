@@ -211,7 +211,7 @@ jobs:
 
           STATUS=$(echo "$OBJ" | jq -r '.status // empty')
           if [ "$STATUS" != "completed" ]; then
-            echo "❌ n8n output not completed (status='$STATUS')"
+            echo "n8n output not completed (status='$STATUS')"
             jq . response_body.json || true
             exit 1
           fi
@@ -220,12 +220,12 @@ jobs:
           REPO=$(echo "$OBJ" | jq -r '.repo_name // empty')
           PR=$(echo "$OBJ" | jq -r '.pr_number // empty')
           if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
-            echo "❌ Missing repo context (owner='$OWNER' repo='$REPO' pr='$PR')"
+            echo "Missing repo context (owner='$OWNER' repo='$REPO' pr='$PR')"
             jq . response_body.json || true
             exit 1
           fi
 
-          echo "ℹ️  Posting inline suggestions to $OWNER/$REPO#${PR}"
+          echo "Posting inline suggestions to $OWNER/$REPO#${PR}"
 
           posted=0
           echo "$OBJ" | jq -c '.prepared_comment_payloads // [] | .[]' | while read -r PAYLOAD; do
@@ -263,7 +263,7 @@ jobs:
           echo "—— Skipped upstream (for visibility) ——"
           echo "$OBJ" | jq -r '.skipped_comments // [] | .[] | "\(.file_path // "-")#L\(.line_number // "-"): \(.reason // "-")"'
 
-          echo "✅ Done. Suggestions posted: $posted"
+          echo "✅ Done. Suggestions posted."
 
       - name: Post verification comments
         env:
@@ -306,7 +306,7 @@ jobs:
 
           COUNT=$(echo "$VERIFS" | jq 'length')
           if [ "$COUNT" -eq 0 ]; then
-            echo "ℹ️ No verification reviews found; skipping."
+            echo "No verification reviews found; skipping."
             exit 0
           fi
 
@@ -316,18 +316,18 @@ jobs:
           PR=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].pr_number else .pr_number end // empty')
 
           if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
-            echo "ℹ️ Missing repo context; skipping verification comments."
+            echo "Missing repo context; skipping verification comments."
             exit 0
           fi
 
-          echo "🔎 Found $COUNT verification review(s). Preview:"
+          echo "Found $COUNT verification review(s). Preview:"
           echo "$VERIFS" | jq -r 'to_entries[] | "\(.key): " + (.value | .[0:160] + (if length>160 then "…" else "" end))'
 
           # Post each block as a PR comment (not inline)
           echo "$VERIFS" | jq -r '.[] + "\u0000"' | while IFS= read -r -d '' BODY; do
             # Skip truly empty
             if [ -z "${BODY//[$'\t\r\n ']}" ]; then
-              echo "⚠️ Skipping empty verification body"
+              echo "Skipping empty verification body"
               continue
             fi
 
