@@ -110,64 +110,15 @@ This section of the document provides guidelines on best practices, language usa
     3. Example: See the next section to understand how slash amounts for equivocations are calculated.
 
 - Use bulleted lists for key points and complex information and to break up walls of text (general readability).
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Use numbered lists for step-by-step instructions and sequential items.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
-
+  
 ### Things to avoid 
 - Avoid casual language or slang.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
-
 - Avoid unnecessary jargon and ambiguity.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Avoid biases, opinions, or emotional language.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Avoid assuming the reader already knows what you're talking about.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
 - Avoid sounding like a sales pitch.
-    1. Example:
-
-
-    2. Example:
-
-
-    3. Example: 
+    
 
 ### Language
 
@@ -245,7 +196,7 @@ This section of the document provides guidelines on best practices, language usa
 - Use tables to represent sets of related pieces of data in a structured way
 - Table headers and values should be centered
 - Tables should be formatted. You can use a tool to format the tables, like the [Markdown Table Formatter VSCode extension](https://marketplace.visualstudio.com/items?itemName=fcrespo82.markdown-table-formatter)
-- Tables should have appropriate column names for each column when appropriate.
+- Tables must have column names for each column when appropriate.
 
 ### List Formatting
 
@@ -273,6 +224,7 @@ This section of the document outlines guidelines for code formatting and convent
 - Use inline code elements for file names, variable names, function names, or any single line of code that serves as a reference and does not need to be copied
 - For inline code, put code elements in between single backticks (`)
 - Use code blocks for multiple lines of code or any code (including single lines) that needs to be copied
+- Imports need to be included so that variables and functions don't appear without context
 - For code blocks, put code elements in between triple backticks (```)
 - Every code block must be assigned a language shortcode, which adds syntax highlighting. For example:
   ```
@@ -446,12 +398,3 @@ Terminal snippets are styled HTML elements:
   <span data-ty="input"><span class="file-path"></span></span>
 </div>
 ```
-
-### Client Rule Exceptions 
-
-####kluster 
-- Use sentence case for titles/headers (instead of title case)
-- Never capitalize kluster, with the exception of some code-related references to kluster. For example, the name of the Kluster-Verify-Code-MCP MCP configuration
-
-####Wormhole:
-- Don't capitalize MainNet and TestNet; should always be mainnet and testnet
