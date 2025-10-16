@@ -200,7 +200,7 @@ jobs:
           echo "✅ Receiving token validated successfully"
 
       # 4. Post inline code suggestions (robust; supports deletions)
-      - name: Post inline suggestions via API (final)
+      - name: Post inline suggestions as ONE review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -220,51 +220,76 @@ jobs:
           REPO=$(echo "$OBJ" | jq -r '.repo_name // empty')
           PR=$(echo "$OBJ" | jq -r '.pr_number // empty')
           if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
-            echo "Missing repo context (owner='$OWNER' repo='$REPO' pr='$PR')"
+            echo "Missing repo context"
             jq . response_body.json || true
             exit 1
           fi
 
-          echo "Posting inline suggestions to $OWNER/$REPO#${PR}"
+          # Build a single review "comments" array from prepared payloads,
+          # while filtering out .ai/** and any *llm* paths (case-insensitive).
+          COMMENTS=$(echo "$OBJ" | jq -c '
+            (.prepared_comment_payloads // [])
+            | map(select(((.path // .file_path // "") | ascii_downcase)
+                        | test("(^|/)\\.ai(/|$)|llm") | not))
+            | map({
+                # Required fields for create-review inline comments:
+                #   path, body, and either position OR (line + side)
+                path: (.path // .file_path // ""),
+                body: (
+                        (.body // "") as $b
+                        | if ($b|gsub("^\\s+$";"")|length) > 0
+                            then $b
+                            else "```suggestion\n```\n"
+                          end
+                      ),
+                # Prefer GitHub's "line" + "side":"RIGHT" form (works on latest diff)
+                line: (.line // .line_number),
+                side: ((.side // "RIGHT") | ascii_upcase)
+                # If your generator only has .position instead of .line,
+                # you can switch to { position: .position } instead.
+              })
+            # Drop any items missing essentials
+            | map(select((.path|length)>0 and (.line|type=="number")))
+          ')
 
-          posted=0
-          echo "$OBJ" | jq -c '.prepared_comment_payloads // [] | .[]' | while read -r PAYLOAD; do
-            # Ensure commit_id exists (avoid 422)
-            CID=$(echo "$PAYLOAD" | jq -r '.commit_id // empty')
-            if [ -z "$CID" ]; then
-              echo "⚠️  Skipping payload without commit_id"
-              continue
-            fi
+          COUNT=$(echo "$COMMENTS" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No eligible comments to post (all filtered or empty)."
+            exit 0
+          fi
 
-            # If body is empty/whitespace, replace with an empty suggestion block (deletion)
-            BODY_TXT=$(echo "$PAYLOAD" | jq -r '.body // ""')
-            if [ -z "${BODY_TXT//[$'\t\r\n ']}" ]; then
-              PAYLOAD=$(echo "$PAYLOAD" | jq --rawfile emptySug <(printf '```suggestion\n```\n') '.body = $emptySug')
-            fi
+          echo "Batching $COUNT suggestions into ONE review…"
 
-            RESP=$(curl -sS -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/comments" \
-              -d "$PAYLOAD")
+          # Create one review containing all inline comments
+          RESP=$(jq -nc --argjson comments "$COMMENTS" \
+                      --arg body "Automated review: proposed suggestions." \
+                      '{body:$body, event:"COMMENT", comments:$comments}' \
+                | curl -sS -w "%{http_code}" -X POST \
+                    -H "Authorization: Bearer ${GH_TOKEN}" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    "https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/reviews" \
+                    -d @-)
 
-            CODE="${RESP:(-3)}"
-            BODY="${RESP%$CODE}"
+          CODE="${RESP:(-3)}"
+          BODY="${RESP%$CODE}"
 
-            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
-              echo "❌ Failed to post suggestion (HTTP $CODE)"
-              echo "$BODY"
-              exit 1
-            fi
-            posted=$((posted+1))
-            echo "✅ Posted suggestion #$posted"
-          done
+          if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
+            echo "❌ Failed to create batched review (HTTP $CODE)"
+            echo "$BODY"
+            exit 1
+          fi
 
-          echo "—— Skipped upstream (for visibility) ——"
-          echo "$OBJ" | jq -r '.skipped_comments // [] | .[] | "\(.file_path // "-")#L\(.line_number // "-"): \(.reason // "-")"'
+          echo "✅ Batched review created."
 
-          echo "✅ Done. Suggestions posted."
-
+          # Optional: log skipped items for visibility
+          echo "$OBJ" | jq -r '
+            (.prepared_comment_payloads // [])
+            | map(select(((.path // .file_path // "") | ascii_downcase)
+                        | test("(^|/)\\.ai(/|$)|llm")))
+            | .[]
+            | "⏭️ Skipped blocked path: \((.path // .file_path // "-"))"
+          '
+          
       - name: Post verification comments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
