@@ -118,6 +118,7 @@ Follow these steps before proposing edits or automated review comments.
 - Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
 - Keep list items parallel in structure and tense.
 - Full-sentence list items must end with a period. Fragmentary list items do not take end punctuation.
+- When a bulleted or numbered list starts each item with an imperative verb (for example, "Install the tool"), treat every item as a complete instruction and end it with a period even if the wording is brief.
 - Do not mix fragments and sentences within the same list. Rewrite items to align with a single structure.
 - In procedural ordered lists, start each step with an imperative verb. If a step contains multiple sentences, each sentence needs appropriate punctuation.
 - Keep list indentation consistent with surrounding text. Nested lists should be indented an additional two spaces.
@@ -294,4 +295,3 @@ Styled terminal components are preferred when the site supports them (for exampl
 - Highlight elements with arrows when necessary. Number multiple arrows and explain them in an ordered list that matches the numbering.
 - Include the full browser window, including the address bar.
 - Save screenshots as `.webp` files.
-

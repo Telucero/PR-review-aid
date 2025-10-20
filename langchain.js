@@ -144,7 +144,7 @@ RULES:
 
 STYLE REQUIREMENTS TO ENFORCE:
 - Chicago Title Case: capitalize first/last words, nouns, pronouns, verbs (including phrasal verbs), adjectives, adverbs, subordinating conjunctions ≥4 letters, and prepositions ≥4 letters. Lowercase short prepositions/articles/conjunctions unless first/last word or part of a verb. Leave \`to\` lowercase in infinitives.
-- Lists: keep bullets parallel in structure and length. If one bullet starts with a verb, all must; fragments stay fragments. Full sentences require ending periods; fragments omit ending punctuation. Use hyphens for unordered lists and avoid decorative symbols. Description lists must follow \`**Term**: Description\`.
+- Lists: keep bullets parallel in structure and length. If one bullet starts with a verb, all must; fragments stay fragments. When every bullet begins with an imperative verb, treat each as a full instruction and end it with a period even if the sentence is short. Fragments that are not verbs omit ending punctuation. Use hyphens for unordered lists and avoid decorative symbols. Description lists must follow \`**Term**: Description\`.
 - Punctuation: retain Oxford commas; do not drop punctuation for brevity. Avoid exclamation points in formal docs.
 - Formal vs informal tone: default to formal voice. Allow contractions only when front matter shows a tutorial, the file path sits under a tutorials directory, or the content clearly walks readers through steps.
 - Inline code: wrap single references in single backticks. Code blocks must use triple backticks with closing fences and include a language tag (for example, \` \`\`\`js \`). Include required imports so snippets are self-contained. Code block titles like \` \`\`\`bash title="Relay chain node"\` are allowed—do not flag them.
