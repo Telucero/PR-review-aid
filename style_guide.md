@@ -1,428 +1,297 @@
 # Developer Documentation Style Guide
 
-This document sets forth the standards and best practices for crafting high-quality technical documentation. It is intended to help you produce clear, consistent, and accessible content. It covers various topics, from writing style and formatting to code examples, images, and more.
-
-The guidelines listed in this document aren't all-inclusive but strive to cover the basics. If this guide does not provide explicit guidance on a particular subject, please default to the [Google developer documentation style guide](https://developers.google.com/style).
+This guide defines the standards and best practices for creating clear, consistent, and accessible technical documentation. It is optimized for automated review agents and human writers alike. When a topic is not covered here, default to the [Google developer documentation style guide](https://developers.google.com/style).
 
 ## Table of Contents
 
-- [Content Guidelines](#content-guidelines)
-  - [Best Practices](#best-practices)
-  - [Language](#language)
-  - [Accessibility](#accessibility)
-  - [Terminology](#terminology)
-  - [Punctuation](#punctuation)
-  - [Text Formatting](#text-formatting)
-    - [Bold](#bold)
-    - [Italics](#italics)
-    - [Underline](#underline)
-    - [Symbols](#symbols)
-    - [Numbers](#numbers)
-    - [Quotes](#quotes)
-    - [Capitalization](#capitalization)
-  - [Table Formatting](#table-formatting)
-  - [List Formatting](#list-formatting)
-  - [Links](#links)
-
+- [How to Use This Guide](#how-to-use-this-guide)
+  - [Quick Checklist](#quick-checklist)
+- [Language and Tone](#language-and-tone)
+  - [Clarity and Specificity](#clarity-and-specificity)
+  - [Formal vs Informal Voice](#formal-vs-informal-voice)
+  - [Things to Avoid](#things-to-avoid)
+- [Accessibility and Inclusion](#accessibility-and-inclusion)
+- [Terminology and Capitalization](#terminology-and-capitalization)
+  - [Chicago Style Reminders](#chicago-style-reminders)
+- [Punctuation and Sentence Structure](#punctuation-and-sentence-structure)
+  - [Lists](#lists)
+  - [Quotes](#quotes)
+- [Text Formatting](#text-formatting)
+  - [Bold](#bold)
+  - [Italics](#italics)
+  - [Symbols and Emojis](#symbols-and-emojis)
+  - [Numbers](#numbers)
+- [Links](#links)
 - [Code Guidelines](#code-guidelines)
-  - [Code Formatting](#code-formatting)
-    - [Code Formatting by Language](#code-formatting-by-language)
+  - [Code Blocks](#code-blocks)
+  - [Code Block Titles](#code-block-titles)
   - [Variable Conventions](#variable-conventions)
-  - [Capturing Terminal Output](#capturing-terminal-output)
-
+  - [Language-Specific Formatting](#language-specific-formatting)
+  - [Formatting Profiles](#formatting-profiles)
+- [Terminal Content](#terminal-content)
 - [Structure Guidelines](#structure-guidelines)
   - [Repository Structure](#repository-structure)
-    - [Naming Conventions](#naming-conventions) 
   - [Page Structure](#page-structure)
-    - [Heading and Titles](#headings-and-titles)
-    - [Introductions](#introductions)
-
-- [Visual Aid Guidelines](#visual-aid-guidelines)
-  - [Icons](#icons)
+- [Visual Assets](#visual-assets)
+  - [Images and Alt Text](#images-and-alt-text)
   - [Diagrams](#diagrams)
   - [Screenshots](#screenshots)
-  - [Terminal Output](#terminal-output)
+- [Exception Reference](#exception-reference)
 
- - [Client Rule Exceptions](#client-rule-exceptions)
- 
+## How to Use This Guide
 
-## Content Guidelines
+Follow these steps before proposing edits or automated review comments.
 
-This section of the document provides guidelines on best practices, language usage, accessibility considerations, terminology standardization, and more.
+### Quick Checklist
 
-### Best Practices
+1. Identify the document type (tutorial, guide, concept, or reference) by checking the front matter or directory structure.
+2. Compose suggestions as complete sentences that include terminating punctuation; aim for concise copy without sacrificing clarity.
+3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
 
-- Use a formal tone that conveys confidence.
-    1. Example: The integration of Circle's Cross-Chain Transfer Protocol (CCTP) with the Wormhole messaging protocol creates a robust system for securely and efficiently transferring native USDC across different blockchain networks while enabling more complex multichain interactions.
+## Language and Tone
 
+### Clarity and Specificity
 
+- **Rule L1 – Use a neutral, instructional voice.** Avoid marketing claims, superlatives, or promises such as "learn everything you need to know." Prefer declarative sentences that state exactly what the page delivers.  
+  Use: `This guide explains how light clients validate blocks on Polkadot.`  
+  Avoid: `Learn everything you need to know about light clients on Polkadot.`
+- **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
+- **Rule L3 – Address the reader as "you."** Avoid possessive language ("our," "we").
+- **Rule L4 – Write timeless documentation.** Omit phrases tied to a specific moment such as "currently" or "at the time of writing."
+- **Rule L5 – Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with terminal punctuation. Do not drop punctuation to meet length targets.
+- **Rule L6 – Keep sentences concise.** Aim for 60–150 characters per sentence to ensure readability while preserving full meaning.
+- **Rule L7 – Active voice for procedures.** Use active voice in instructions ("Click Connect") while passive voice remains acceptable in conceptual summaries.
 
-    2. Example: Tokens are taken into custody and burned: The Circle Bridge takes custody of Alice's USDC and initiates a burn using Circle's CCTP, triggering an off-chain attestation process.
+### Formal vs Informal Voice
 
+- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without contractions or first-person plural pronouns.
+- **Rule L9 – Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
+  - The front matter includes `type: tutorial` or a similar tutorial flag, or
+  - The file resides in a tutorials directory (for example, `/tutorials/`, `/get-started/`), or
+  - The content explicitly walks the reader through a task step by step.  
+  When unsure, default to the formal tone.
 
+### Things to Avoid
 
-    3. Example:"What sets Substrate apart is its modular architecture, which enables the seamless integration of built-in modules and the creation of custom ones.
+- Casual language or slang in formal documentation
+- Unnecessary jargon without definitions
+- Biases, opinions, or emotional language
+- Assumptions about the reader's prior knowledge
+- Sales or promotional copy
+- Do not use exclamation points in formal documentation
 
-- Keep sentences short and to the point. 
-    1. Example: This article focuses on the necessary steps.
+## Accessibility and Inclusion
 
+- Maintain a logical heading hierarchy beginning with a single H1.
+- Use descriptive alt text for every image; it must describe what is in the image rather than repeat the surrounding heading.
+- Provide descriptive link text instead of "here" or "this."
+- Avoid directional references such as "above" or "below"; describe the target element instead.
+- Be mindful of pronouns and avoid unnecessarily gendered language.
 
-    2. Example: Add the default configuration to the chain specification.
+## Terminology and Capitalization
 
+- For token standards, include a hyphen between the prefix and identifier (for example, `ERC-20`).
+- Use `JSON-RPC` instead of `JSON RPC`.
+- Use `dApp` instead of `dapp` or `DApp` (except when starting a sentence).
+- Prefer "and more" or "and so on" instead of "etc."
+- Respect product names and proper nouns; verify against the vendor's branding.
+- Apply client-specific terminology overrides from `exceptions.json` (for example, keep `TestNet` in Polkadot docs even though Wormhole content uses `testnet`).
 
-    3. Example: Substrate is a powerful and modular software development framework.
+### Chicago Style Reminders
 
-- Maintain a neutral and objective tone.
-    1. Example: This page covers how to create, use, and stop your dedicated deployments.
+- Capitalize the first and last word in titles and headings.
+- Capitalize nouns, pronouns, verbs, adjectives, adverbs, and subordinating conjunctions with four or more letters (for example, While, Because, After).
+- Lowercase articles (a, an, the), coordinating conjunctions (and, but, for, or, nor, yet, so), and short prepositions (three letters or fewer) unless they are the first or last word or part of a phrasal verb.
+- When multiple Chicago resources disagree, favor capitalization if the word is stressed and four or more letters long. Verify edge cases before recommending a change.
 
+## Punctuation and Sentence Structure
 
-    2. Example: If you're unsure of your endpoint ID, look for it in the Dedicated deployments page.
+- Use the Oxford comma in lists of three or more items.
+- Avoid exclamation marks in formal documentation.
+- Use colons to introduce lists when the lead-in is an independent clause.
+- Do not use em dashes to replace list item separators; prefer commas or semicolons as appropriate.
+- Ensure every declarative sentence ends with a period. Questions must end with a question mark.
+- Never remove punctuation simply to shorten a line; rewrite the sentence instead.
 
+### Lists
 
-    3. Example: Then, press Launch deployment.
+- Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
+- Keep list items parallel in structure and tense.
+- Full-sentence list items must end with a period. Fragmentary list items do not take end punctuation.
+- Do not mix fragments and sentences within the same list. Rewrite items to align with a single structure.
+- In procedural ordered lists, start each step with an imperative verb. If a step contains multiple sentences, each sentence needs appropriate punctuation.
+- Keep list indentation consistent with surrounding text. Nested lists should be indented an additional two spaces.
+- Ensure that bullets all follow similar sentence structure.
 
-- Provide context.
-    1. Example: Ensure you're logged in to the kluster.ai platform, then navigate to the Dedicated deployments page, then press Launch deployment.
 
+### Quotes
 
-    2. Example: Specify auto-shutdown: Set an auto‑shutdown window for your instance to power down after a specified period of inactivity, between 15 minutes to 12 hours.
+- Use double quotation marks in body text.
+- Place commas and periods inside the closing quotation mark.
+- Use single quotation marks only within code examples when required by language conventions or within quotations.
 
+## Text Formatting
 
-    3. Example: A Wormhole message is published: The transfer metadata is emitted as a Wormhole message. Guardians validate and sign it to produce a Verifiable Action Approval (VAA).
+### Bold
 
-- Stick to the facts. 
-    1. Example:Wormhole's core functionality allows you to send any data packet from one supported chain to another.
+- Wrap bold text in double asterisks (`**bold**`).
+- Bold UI elements and terms when introducing a definition list (`**Term**: Definition`).
+- Bold inline code terms in description lists when the term itself is inline code.
 
+### Italics
 
-    2. Example: The emitter chain, emitter address, and sequence values are used to retrieve and decode signed messages.
+- Wrap italics in single underscores (`_italic_`).
+- Use italics sparingly to introduce or emphasize a new term.
 
+### Symbols and Emojis
 
-    3. Example: This guide demonstrates how to publish your first simple, arbitrary data message from an EVM environment source chain using the Wormhole TypeScript SDK's core messaging capabilities.
+- Do not introduce emojis, emoticons, or ampersands in narrative text unless the UI explicitly requires them.
+- Ignore existing emojis inside fenced code blocks or terminal output. Do not flag or remove emojis that are part of sample code, logs, or returned data.
+- Preserve emoticons in code when they represent actual output or protocol requirements.
 
-- Write timeless documentation that doesn't anchor the content to a specific point in time. Avoid using "at the time of writing," "currently," etc.
+### Numbers
 
-    1. Example: Validators and nominators who stake tokens face consequences for validator misbehavior, which range from token slashes to restrictions on network participation.
+- Spell out zero through nine. Use numerals for 10 and above unless project-specific guidance overrides this rule.
 
+## Links
 
-    2. Example: When a validator is slashed, they and their nominators lose a percentage of their staked DOT or KSM, from as little as 0.01% up to 100% based on the severity of the offense.
-
-
-    3. Example: See the next section to understand how slash amounts for equivocations are calculated.
-
-- Use bulleted lists for key points and complex information and to break up walls of text (general readability).
-- Use numbered lists for step-by-step instructions and sequential items.
-  
-### Things to avoid 
-- Avoid casual language or slang.
-- Avoid unnecessary jargon and ambiguity.
-- Avoid biases, opinions, or emotional language.
-- Avoid assuming the reader already knows what you're talking about.
-- Avoid sounding like a sales pitch.
-    
-
-### Language
-
-- Avoid possessive language, such as "our," "we," etc., unless writing an informal tutorial
-- Address the reader as _you_
-- In tutorials and guides, where you're instructing a user to act, use an active voice
-- In conceptual documentation, where you're not instructing a user to act, using a passive voice is permitted
-- Be mindful of pronouns. Avoid unnecessarily gendered language
-
-### Accessibility
-
-- Headings should follow a hierarchical structure, starting with H1 (`#`)
-- Use alt text for all images. The alt text should describe what the image depicts
-- Use descriptive and meaningful link text. Avoid using "here" in link text. If the link points to a specific article, use the title of that article as the link text
-- Avoid directional language, such as "above" or "below"
-
-### Terminology
-
-- For token standards, put a dash (`-`) between the standard prefix and the unique identifier for the standard. For example, ERC-20 instead of ERC20
-- Use JSON-RPC instead of JSON RPC
-- Use dApp instead of dapp or DApp (except at the beginning of a sentence)
-- Use "and more" or "and so on" instead of "etc."
-
-### Punctuation
-
-- Use Oxford commas
-- Use dashes in lists (instead of colons)
-- Do not put periods at the end of a list item
-- Do not use exclamation marks in formal writing
-
-### Text Formatting
-
-#### Bold
-
-- Put bold elements between double asterisks (`**`)
-- Use bold formatting for:
-  - When referencing UI elements
-  - List items where we're listing out terms with a description. The term will be in bold. See [List Formatting](#list-formatting) for an example
-    - This should also be applied to inline code elements used in list titles
-  - Sparingly can be used to highlight can't-miss, important things
-
-#### Italics
-
-- Put italic elements between single underscores (`_`)
-- Use italics when drawing attention to a specific word or phrase, for example, when introducing a new term
-
-#### Underline
-
-- Do not underline text
-
-#### Symbols
-- Do not use emojis
-- Do not use ampersands (`&`) unless referring to a UI element that uses them
-- Do not use emoticons for example : `:)`, `<3`, `;)`
-
-#### Numbers
-
-- Spell out numbers as words for numbers zero through nine
-
-
-#### Quotes
-
-- Use double quotes in regular text
-- Commas and periods go inside quotation marks
-- Single quotes should only be used in code examples, depending on the guidelines in the [Code Formatting By Language](#code-formatting-by-language) section
-
-#### Capitalization
-
-- Use Chicago title-style capitalization for titles and headings, which capitalizes the first word plus all other significant words
-- Capitalize product names
-- Avoid unnecessary capitalization; before you capitalize a word, think about why and if it should be capitalized
-
-### Table Formatting
-
-- Use tables to represent sets of related pieces of data in a structured way
-- Table headers and values should be centered
-- Tables should be formatted. You can use a tool to format the tables, like the [Markdown Table Formatter VSCode extension](https://marketplace.visualstudio.com/items?itemName=fcrespo82.markdown-table-formatter)
-- Tables must have column names for each column when appropriate.
-
-### List Formatting
-
-- Use ordered (numbered) lists for a sequence of steps
-- Use unordered (bulleted) lists for items that are non-sequential and can be read or completed in any order
-- For description lists, use the following formatting: `**term**: description`
-  - Put the term in bold
-  - Use a colon (`:`) between the term and the description
-  - Capitalize the first word in the description, unless it's an acronym or product name that should not be capitalized
-- Add punctuation at the end of each list item, with the exception being if the sentence is not a complete sentence, nor if the sentence does not start with a verb.
-- Lists should all follow a similar format and sentence structure, one should not start with a verb while the other are full and complex sentences. One should not be long while the other are short.  
-
-### Links
-
-- Add `{target=\_blank}` to all links, except links to other sections on the same page
-- Use descriptive link text; avoid using "this", "here", and other generic words in the link text
-- Links do not require any in-line formatting, such as bold, italics, or underlining. Depending on the project and the design, links might be underlined, but that will be managed using CSS
-- For links used with bolded terms, the astrisks must surround the entire link and term like so `**[term](link)**` and don't forget to add `{target=\_blank}` if the link leaves the current page. 
+- Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it.
+- Use descriptive link text that indicates the destination. Avoid "here" or "click here."
+- When bolding linked terms, place the formatting outside the link: `**[Term](link){target=\_blank}**`.
+- Do not apply additional inline formatting (italics or underline) to links unless project styles require it.
 
 ## Code Guidelines
 
-This section of the document outlines guidelines for code formatting and conventions to adhere to.
+### Code Blocks
 
-### Code Formatting
+- Use inline code (single backticks) for filenames, variables, or short code fragments that do not need to be copied.
+- Use fenced code blocks for multi-line samples or any code the reader needs to copy.
+- Always supply a language identifier on fenced code blocks (for example, add `js`, `bash`, or `solidity` after the opening fence).
+- Include required imports so variables and functions are defined within the snippet.
+- Keep code samples executable. Provide context comments only when necessary to explain a non-obvious step.
+- Preserve existing syntax highlighting hints or metadata provided by the documentation framework.
 
-- Use inline code elements for file names, variable names, function names, or any single line of code that serves as a reference and does not need to be copied
-- For inline code, put code elements in between single backticks (`)
-- Use code blocks for multiple lines of code or any code (including single lines) that needs to be copied
-- Imports need to be included so that variables and functions don't appear without context
-- For code blocks, put code elements in between triple backticks (```)
-- Every code block must be assigned a language shortcode, which adds syntax highlighting. For example:
-  ```
-  ```js
-  ```py
-  ```solidity
-  ```
-  
+### Code Block Titles
 
-#### Code Formatting by Language
-
-|    Language     |      JavaScript/TypeScript       |               JSON               |                      Python                      |                                                        Solidity                                                         |
-|:---------------:|:--------------------------------:|:--------------------------------:|:------------------------------------------------:|:-----------------------------------------------------------------------------------------------------------------------:|
-| Code Formatter  | [Prettier](https://prettier.io/) | [Prettier](https://prettier.io/) | [Black](https://black.readthedocs.io/en/stable/) | [Prettier plugin for Solidity](https://github.com/prettier-solidity/prettier-plugin-solidity?tab=readme-ov-file#vscode) |
-|  Indent Style   |              space               |              space               |                      space                       |                                                          space                                                          |
-|   Indent Size   |                2                 |                4                 |                        4                         |                                                            4                                                            |
-| Max Line Length |                80                |                80                |                        80                        |                                                           80                                                            |
-|   Quote Type    |              single              |              double              |                      double                      |                                                         double                                                          |
-| Trailing Comma  |               true               |              false               |                       true                       |                                                          false                                                          |
-|    Semicolon    |               true               |              false               |                      false                       |                                                          false                                                          |
-### Prettier Formatting 
-All files that are floowing the below naming conventions must follow these formatting rules.
- 
-  [*.ts]
-  indent_style=space
-  indent_size=2
-  max_line_length=80
-  quote_type=single
-  
-  [*.js]
-  indent_style=space
-  indent_size=2
-  max_line_length=80
-  quote_type=single
-  
-  [*.json]
-  indent_style=space
-  indent_size=4
-  max_line_length=80
-  quote_type=double
-  
-  [*.html]
-  max_line_length=off
+- Documentation sites may use titled code fences, such as adding `title="Relay chain node"` to a bash fence.
+- Do not remove or warn about code block titles. They are allowed when supported by the site theme.
+- When adding a new titled block, ensure the title succinctly describes the snippet (command, file name, or environment).
 
 ### Variable Conventions
 
-- For Python, use snake_case
-- For JavaScript, use camelCase
-- Root-level variables should be declared at the top of the code example (after any imports but before any functions)
-- Do not use all uppercase letters for variable names unless they are exported constants
+- Use `snake_case` for Python variables and `camelCase` for JavaScript variables.
+- Declare root-level variables at the top of the snippet after imports.
+- Use uppercase for exported constants only (for example, `export const PRIVATE_KEY = 'INSERT_PRIVATE_KEY';`).
+- When users must supply values, create placeholder variables that follow these rules:
+  - Describe the value.
+  - Use uppercase snake case prefixed with `INSERT`.
+  - Wrap the value in quotes if the actual value requires quotes.
+  - Avoid generic terms such as `HERE` or `VALUE`.
 
-  - 🟢 `export const PRIVATE_KEY = 'INSERT_PRIVATE_KEY';`
-  - 🔴 `const PRIVATE_KEY = 'INSERT_PRIVATE_KEY';`
-  - 🔴 `export const privateKey = 'INSERT_PRIVATE_KEY';`
+Correct examples:
 
-- When users need to input personalized information, establish a variable to serve as a placeholder. Ensure that placeholder text adheres to the following conventions:
-  - It should describe the variable
-  - It should be capitalized in all uppercase letters
-  - Written in snake_case
-  - Start with the keyword `INSERT`
-  - It should not use `HERE` or any other generic keyword aside from `INSERT`
-  - It should be put in quotation marks if the corresponding value requires quotation marks
- 
-  See the following examples:
+```js
+const address = 'INSERT_CONTRACT_ADDRESS';
+const amount = INSERT_AMOUNT_TO_SEND;
+execute(address, amount);
+```
 
-    - 🟢 `const address = 'INSERT_CONTRACT_ADDRESS';`
-    - 🟢 `const addresses = ['INSERT_X_ADDRESS', 'INSERT_Y_ADDRESS', 'INSERT_Z_ADDRESS'];`
-    - 🟢 `const amount = INSERT_AMOUNT_TO_SEND;`
-    - 🔴 `const address = 'INSERT-CONTRACT-ADDRESS';`
-    - 🔴 `const address = 'INSERT_CONTRACT_ADDRESS_HERE';`
-    - 🔴 `const privateKey = 'insert_privte_key';`
+### Language-Specific Formatting
 
-- If you're creating variables for arguments that need to be passed into a function, use the parameter name as the argument variable name. For example, if you have the following function:
+Use the following defaults unless the project specifies otherwise:
 
-  `execute(dest, weight)`
+| Language | Formatter | Indent Style | Indent Size | Max Line Length | Quote Type | Trailing Comma | Semicolon |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| JavaScript / TypeScript | [Prettier](https://prettier.io/) | spaces | 2 | 80 | single | true | true |
+| JSON | [Prettier](https://prettier.io/) | spaces | 4 | 80 | double | false | n/a |
+| Python | [Black](https://black.readthedocs.io/en/stable/) | spaces | 4 | 80 | double | true | false |
+| Solidity | [prettier-plugin-solidity](https://github.com/prettier-solidity/prettier-plugin-solidity?tab=readme-ov-file#vscode) | spaces | 4 | 80 | double | false | false |
 
-  🟢 You should name the variables after the parameters. For this example, you would use dest and weight:
-  
-    ```js
-    const dest = 'INSERT_DEST';
-    const weight = 'INSERT_WEIGHT';
-    execute(dest, weight);
-    ```
+### Formatting Profiles
 
-  🔴 This is as opposed to doing something like this:
-  
-    ```js
-    const xcmDest = 'INSERT_DEST';
-    const xcmWeight = 'INSERT_WEIGHT';
-    execute(xcmDest, xcmWeight);    
-    ```
-
-### Capturing Terminal Output
-
-If your code examples need to be run via the command line, you can include a terminal element in the documentation for the command and expected outcome. For more information, please refer to the [Terminal Output] section.
-
-## Structure Guidelines
-
-This section of the document outlines guidelines for repository structure and page structure.
-
-### Repository Structure
-
-- Use snippets for repetitive text or example code
-- Use a dedicated directory for all snippets (text and code should be separated into respective directories)
-- Use a dedicated directory for all images
-- Directories for images and snippets should mirror the hierarchical structure of the documentation
-
-#### Naming Conventions
-
-- Use descriptive names that clearly describe the file's purpose or content
-- Keep names short and concise
-- All directory and file names should use kebab-case (e.g., `hello-world.md`)
-- Use lower-case letters in directory and file names
-- Do not use spaces or special characters
-- Always use the correct file extension for the file type (e.g., `.js` for JavaScript, `.py` for Python, `.md` for Markdown)
-
-### Page Structure
-
-- Use a table of contents
-- Most pages will require an introduction, except some reference pages
-- If users need to complete specific tasks or have certain items before going through the page, include a "Check Prerequisites" section
-- Include visual aids to illustrate concepts
-
-#### Headings and Titles
-
-- Each page should have an H1 title
-- Each page should have a meta title (may be different than the H1 title) and meta description
-- Headings should follow a hierarchical order
-- Headings should not include numbers
-- Use descriptive headings based on the purpose of the section:
-   - For task-based content, use a task-based heading (i.e., use "Create an Instance" instead of "Creating an Instance")
-   - For a conceptual or non-task-based heading, use a noun phrase that doesn't start with an "-ing" verb (i.e., use "Blockchain Consensus Mechanisms" instead of "Understanding Blockchain Consensus")
-
-#### Introductions
-
-When applicable, introductions should follow this recipe:
-
-- Briefly introduce the topic
-- Describe the current standard, including existing methods and their limitations. This should paint a picture of the problem that the topic solves
-- Explain how the new feature addresses these limitations and its benefits
-- Provide a brief overview of the guide's content
-
-## Visual Aid Guidelines
-
-This section of the document outlines guidelines for visual aids, such as images and diagrams. It is recommended to create templates for visual aids, such as diagrams and icons, to help promote consistency in style and size.
-
-### Icons
-
-- Use icons from the same design system or library
-- Use the same stroke width
-- Use the same fill style (i.e., outline, filled, etc.)
-- Use the same dimensions
-- Use the same color scheme
-- Use the same format. Icons should be either `.svg` or `.webp` files
-
-### Diagrams
-
-- Use a consistent design language
-- Use the same line weight, color, and type (i.e., solid, dashed, etc.). You can use different types and colors, but there should be a valid reason for the difference
-- Use the same font family
-- Use consistent style and size shapes
-- Limit the amount of text in diagrams
-- Check the spacing of elements to ensure all elements are evenly spaced and, where applicable, align horizontally and vertically
-- Diagrams should be `.webp` files
-
-### Screenshots
-
-- Screenshots should be at 150% zoom
-- Resolution: Always use 300 DPI
-- Use the average size of 1510px width (height variable) for most purposes, ensuring that all elements are clear and sharp
-- Take screenshots in light or dark mode to match the theme of the documentation site. If your documentation has both light and dark themes available, take screenshots in dark mode
-- To highlight an item on the screenshot, add arrow(s) to the image
-- If more than one arrow is required, they should be numbered, and the document should have an ordered list that aligns with the numbers in the screenshot
-- Arrows should use the same color scheme
-- Arrows should be a consistent size
-- All screenshots of the browser should include the entire window, including the address bar
-- Images should be `.webp` files
-
-### Terminal Output
-
-**Note:** This section applies to documentation sites that have implemented the [styled terminals](https://papermoonio.github.io/demo-docs/builders/get-started/features/#terminal-window) provided by PaperMoon. This is highly recommended to improve maintainability.
-
-- Terminal output should be copied and formatted into a "terminal snippet" (see below)
-- Show the command that was run
-- Show the output of running that command
-- If the terminal output concludes without requiring user input, returning you to the command prompt to enter the next command, show the blank command prompt
-- Emojis in certain instace like in terminal output are allowed 
-
-Terminal snippets are styled HTML elements:
+Apply the following editorconfig-style defaults when contributing new files:
 
 ```
+[*.ts]
+indent_style = space
+indent_size = 2
+max_line_length = 80
+quote_type = single
+
+[*.js]
+indent_style = space
+indent_size = 2
+max_line_length = 80
+quote_type = single
+
+[*.json]
+indent_style = space
+indent_size = 4
+max_line_length = 80
+quote_type = double
+
+[*.html]
+max_line_length = off
+```
+
+## Terminal Content
+
+Styled terminal components are preferred when the site supports them (for example, [Termynal](https://papermoonio.github.io/demo-docs/builders/get-started/features/#terminal-window)).
+
+- Use terminal snippets for commands and their output when the framework supports the `termynal` component. Otherwise, use fenced `bash` code blocks.
+- Show the command that was run, the resulting output, and the blank prompt that indicates control returned to the user.
+- Maintain the HTML structure exactly as required by the component:
+
+```html
 <div id="termynal" data-termynal>
   <span data-ty="input"><span class="file-path"></span>INSERT_COMMAND</span>
   <span data-ty>INSERT_OUTPUT</span>
-  <span data-ty>INSERT_ADDITIONAL_OUTPUT</span>
   <span data-ty="input"><span class="file-path"></span></span>
 </div>
 ```
 
+- Do not replace terminal snippets with plain code blocks or vice versa without confirming the site's requirements.
+- Preserve emojis or special characters that appear in actual terminal output; they help readers verify they ran the correct command.
+- When reviewing terminal content, confirm prompts, file paths, and commands match the surrounding instructions.
+
+## Structure Guidelines
+
+### Repository Structure
+
+- Use snippets for repeated text or code and store them in dedicated snippet directories (separate directories for text and code).
+- Store all images in a dedicated images directory. Mirror the documentation hierarchy in the snippets and images directories.
+- Use descriptive, kebab-case filenames (for example, `hello-world.md`). Avoid spaces and special characters.
+- Always use the correct file extension for the content type.
+
+### Page Structure
+
+- Include a table of contents when the platform supports it.
+- Begin each page with an H1 title. Provide meta titles and descriptions as required by the platform.
+- Introduce the topic with context, explain the current limitations, describe how the feature addresses them, and preview what the guide covers.
+- Add a "Check prerequisites" section if readers must complete steps or gather resources before starting.
+- Use task-based headings for procedural content (for example, "Create an Instance") and noun phrases for conceptual sections (for example, "Blockchain Consensus Mechanisms").
+- Headings should follow a strict hierarchy and should not include numbering unless the platform requires it.
+
+## Visual Assets
+
+### Images and Alt Text
+
+- Provide alt text that describes what the image depicts, including key UI elements or outcomes. Do not reference unrelated sections or products.
+- Verify the image filename, caption, and surrounding context before suggesting an alt text change to avoid misidentifying the subject.
+- Maintain consistent numbering systems provided in the document. Do not reassign figure numbers or labels to images from other sections.
+
+### Diagrams
+
+- Use a consistent design language, line weight, color palette, and font family.
+- Keep shapes and spacing consistent. Document any intentional variations.
+- Save diagrams as `.webp` files when possible.
+
+### Screenshots
+
+- Capture screenshots at 150% zoom and 300 DPI resolution.
+- Use an average width of 1510px (height varies) to ensure clarity.
+- Match the documentation theme (light or dark mode). If both modes are supported, default to dark mode.
+- Highlight elements with arrows when necessary. Number multiple arrows and explain them in an ordered list that matches the numbering.
+- Include the full browser window, including the address bar.
+- Save screenshots as `.webp` files.
 
