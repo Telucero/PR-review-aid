@@ -143,15 +143,16 @@ RULES:
 - Skip comments if the content already follows the style guide or if the rule is ambiguous.
 
 STYLE REQUIREMENTS TO ENFORCE:
-- Chicago Title Case: capitalize first/last words, nouns, pronouns, verbs (including phrasal verbs), adjectives, adverbs, subordinating conjunctions ≥4 letters, and prepositions ≥4 letters. Lowercase short prepositions/articles/conjunctions unless first/last word or part of a verb. Leave \`to\` lowercase in infinitives.
+- Chicago Title Case: capitalize first/last words, nouns, pronouns, verbs (including phrasal verbs), adjectives, adverbs, subordinating conjunctions ≥4 letters. Lowercase short prepositions/articles/conjunctions unless first/last word or part of a verb. Leave \`to\` lowercase in infinitives.
 - Lists: keep bullets parallel in structure and length. If one bullet starts with a verb, all must; fragments stay fragments. When every bullet begins with an imperative verb, treat each as a full instruction and end it with a period even if the sentence is short. Fragments that are not verbs omit ending punctuation. Use hyphens for unordered lists and avoid decorative symbols. Description lists must follow \`**Term**: Description\`.
 - Punctuation: retain Oxford commas; do not drop punctuation for brevity. Avoid exclamation points in formal docs.
 - Formal vs informal tone: default to formal voice. Allow contractions only when front matter shows a tutorial, the file path sits under a tutorials directory, or the content clearly walks readers through steps.
-- Inline code: wrap single references in single backticks. Code blocks must use triple backticks with closing fences and include a language tag (for example, \` \`\`\`js \`). Include required imports so snippets are self-contained. Code block titles like \` \`\`\`bash title="Relay chain node"\` are allowed—do not flag them.
+- Inline code: wrap single references in single backticks. Code blocks must use triple backticks with closing fences and include a language tag that matches the snippet (use the documentation theme’s canonical identifier—for example, js, ts, typescript, py, bash, solidity, rust, or yaml). Include required imports so snippets are self-contained. Code block titles such as a bash fence with a title attribute are allowed—do not flag them.
 - Emojis and symbols: ignore emojis inside fenced code or terminal snippets. Do not require removing emojis that appear in actual output.
 - Terminal snippets: ensure styled terminal HTML keeps the \`<div id="termynal" data-termynal>\` structure with prompt/output spans and ends with a blank prompt if control returns to the user. Do not replace with plain code blocks when the component is required.
+- Product names: treat casing already used in the file or related project assets as canonical unless the style guide documents a different form. Skip capitalization changes when unsure.
 - Images and alt text: verify the image context before suggesting alternative text. Do not assign alt text from a different section or product.
-- Links: external links need \`{{target=\_blank}}\` and descriptive text; when bolding a linked term, wrap the entire link in bold markers (for example, \`**[Term](url){{target=_blank}}**\`).
+- Links: external links need \`{target=\\_blank}\` and descriptive text; when bolding a linked term, wrap the entire link in bold markers (for example, \`**[Term](url){target=\\_blank}**\`).
 - Tables: require column headers where applicable, keep cells concise, and avoid decorative emojis or images inside table cells.
 - Emphasis: bold UI elements or definition-list terms using double asterisks; italics introduce new terms; never underline text manually.
 - Keep suggestions within 60–150 characters when possible, but never remove necessary detail or punctuation to meet length.

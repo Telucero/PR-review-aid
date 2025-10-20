@@ -95,6 +95,7 @@ Follow these steps before proposing edits or automated review comments.
 - Use `dApp` instead of `dapp` or `DApp` (except when starting a sentence).
 - Prefer "and more" or "and so on" instead of "etc."
 - Respect product names and proper nouns; verify against the vendor's branding.
+- Treat the spelling that already appears consistently in the documentation (for example, in navigation files or headings) as the canonical product name. Do not change the casing unless the style guide explicitly documents a different form.
 - Apply client-specific terminology overrides from `exceptions.json` (for example, keep `TestNet` in Polkadot docs even though Wormhole content uses `testnet`).
 
 ### Chicago Style Reminders
@@ -156,7 +157,7 @@ Follow these steps before proposing edits or automated review comments.
 
 ## Links
 
-- Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it.
+- Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it. The backslash keeps the underscore literal in Markdown.
 - Use descriptive link text that indicates the destination. Avoid "here" or "click here."
 - When bolding linked terms, place the formatting outside the link: `**[Term](link){target=\_blank}**`.
 - Do not apply additional inline formatting (italics or underline) to links unless project styles require it.
@@ -167,7 +168,34 @@ Follow these steps before proposing edits or automated review comments.
 
 - Use inline code (single backticks) for filenames, variables, or short code fragments that do not need to be copied.
 - Use fenced code blocks for multi-line samples or any code the reader needs to copy.
-- Always supply a language identifier on fenced code blocks (for example, add `js`, `bash`, or `solidity` after the opening fence).
+- Wrap every code block in triple backticks and close it with another triple backtick on its own line.
+- Add the language shortcode that matches the snippet immediately after the opening fence (use the canonical identifier for the language in your theme—for example, `js`, `ts`, `typescript`, `py`, `bash`, `solidity`, `rust`, or `yaml`). Examples:
+
+  ````markdown
+  ```js
+  import { connect } from '@polkadot/api';
+  console.log('Connected');
+  ```
+  ````
+
+  ````markdown
+  ```ts
+  import { ApiPromise } from '@polkadot/api';
+  ```
+  ````
+
+  ````markdown
+  ```py
+  print("Hello, Polkadot!")
+  ```
+  ````
+
+  ````markdown
+  ```solidity
+  // SPDX-License-Identifier: MIT
+  pragma solidity ^0.8.0;
+  ```
+  ````
 - Include required imports so variables and functions are defined within the snippet.
 - Keep code samples executable. Provide context comments only when necessary to explain a non-obvious step.
 - Preserve existing syntax highlighting hints or metadata provided by the documentation framework.
