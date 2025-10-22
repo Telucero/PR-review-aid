@@ -14,8 +14,8 @@ Follow these steps before proposing edits or automated review comments.
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
 - **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
 - **Rule L3 – Address the reader as "you."** Avoid possessive language ("our," "we").
-- **Rule L4 – Write timeless documentation.** Omit phrases tied to a specific moment such as "currently" or "at the time of writing."
-- **Rule L5 – Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with terminal punctuation. Do not drop punctuation to meet length targets.
+- **Rule L4 – Write timeless documentation.** Remove wording that anchors the page to a specific calendar moment. Flag phrases such as "currently," "at the time of writing," "as of 2023," "today," "recently," or absolute timestamps that are not required for accuracy. Do **not** flag legitimate use of future or past tense (for example, "will deploy" or "was created") when the action itself occurs in that timeframe; only comment when the wording makes the guidance expire. The usage of before or after a time or event is acceptable when it indicates a condition for the instructions.
+- **Rule L5 – Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with ending punctuation. Do not drop punctuation to meet length targets.
 - **Rule L6 – Keep sentences concise.** Aim for 60–150 characters per sentence to ensure readability while preserving full meaning.
 - **Rule L7 – Active voice for procedures.** Use active voice in instructions ("Click Connect") while passive voice remains acceptable in conceptual summaries.
 
@@ -93,7 +93,7 @@ Follow these steps before proposing edits or automated review comments.
 ### Quotes
 - Use double quotation marks in body text.
 - Place commas and periods inside the closing quotation mark.
-- Use single quotation marks only within code examples when required by language conventions or within quotations.
+- Use single quotation marks only with code based terms like 'SOL_PRIVATE_KEY', 'helper.ts', or 'pallet_revive' or quotes within quotes.
 
 ### Bold
 - Wrap bold text in double asterisks (`**bold**`).
@@ -116,5 +116,4 @@ Follow these steps before proposing edits or automated review comments.
 1. Identify the document type (tutorial, guide, concept, or reference) by checking the front matter or directory structure.
 2. Compose suggestions as complete sentences that include terminating punctuation; aim for concise copy without sacrificing clarity.
 3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
-
 
