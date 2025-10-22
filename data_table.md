@@ -38,10 +38,6 @@ This guide defines the standards and best practices for creating clear, consiste
   - [Screenshots](#screenshots)
 - [Exception Reference](#exception-reference)
 
-## How to Use This Guide
-
-Follow these steps before proposing edits or automated review comments.
-
 ### Quick Checklist
 
 1. Identify the document type (tutorial, guide, concept, or reference) by checking the front matter or directory structure.
@@ -64,9 +60,8 @@ Follow these steps before proposing edits or automated review comments.
 
 ### Formal vs Informal Voice
 
-- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without contractions or first-person plural pronouns.
-- **Rule L9 – Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
-  - The front matter includes `type: tutorial` or a similar tutorial flag, or
+- **Rule L8 – Default to a formal tone.** References, and conceptual overviews must use formal language without contractions or first-person plural pronouns.
+- **Rule L9 – Allow informal tone only in tutorials and guides.** You may use contractions ("let's," "you're") and collaborative phrasing when:
   - The file resides in a tutorials directory (for example, `/tutorials/`, `/get-started/`), or
   - The content explicitly walks the reader through a task step by step.  
   When unsure, default to the formal tone.
@@ -136,7 +131,6 @@ Follow these steps before proposing edits or automated review comments.
 
 ### Bold
 
-- Wrap bold text in double asterisks (`**bold**`).
 - Bold UI elements and terms when introducing a definition list (`**Term**: Definition`).
 - Bold inline code terms in description lists when the term itself is inline code.
 
@@ -149,7 +143,6 @@ Follow these steps before proposing edits or automated review comments.
 
 - Do not introduce emojis, emoticons, or ampersands in narrative text unless the UI explicitly requires them.
 - Ignore existing emojis inside fenced code blocks or terminal output. Do not flag or remove emojis that are part of sample code, logs, or returned data.
-- Preserve emoticons in code when they represent actual output or protocol requirements.
 
 ### Numbers
 
@@ -166,9 +159,10 @@ Follow these steps before proposing edits or automated review comments.
 
 ### Code Blocks
 
-- Use inline code (single backticks) for filenames, variables, or short code fragments that do not need to be copied.
-- Use fenced code blocks for multi-line samples or any code the reader needs to copy.
-- Wrap every code block in triple backticks and close it with another triple backtick on its own line.
+- Use inline code (single backticks) for filenames, variables, or short code fragments that do not need to be copied. AI
+- Use fenced code blocks for multi-line samples or any code the reader needs to copy. Ai
+- Wrap every code block in triple backticks and close it with another triple backtick on its own line with the canonical short code. Ai
+- titles with the canonical short code. Ai
 - Add the language shortcode that matches the snippet immediately after the opening fence (use the canonical identifier for the language in your theme—for example, `js`, `ts`, `typescript`, `py`, `bash`, `solidity`, `rust`, or `yaml`). Examples:
 
   ````markdown
@@ -233,7 +227,7 @@ const amount = INSERT_AMOUNT_TO_SEND;
 execute(address, amount);
 ```
 
-### Language-Specific Formatting
+### Language-Specific Formatting code
 
 Use the following defaults unless the project specifies otherwise:
 
@@ -244,9 +238,7 @@ Use the following defaults unless the project specifies otherwise:
 | Python | [Black](https://black.readthedocs.io/en/stable/) | spaces | 4 | 80 | double | true | false |
 | Solidity | [prettier-plugin-solidity](https://github.com/prettier-solidity/prettier-plugin-solidity?tab=readme-ov-file#vscode) | spaces | 4 | 80 | double | false | false |
 
-### Formatting Profiles
-
-Apply the following editorconfig-style defaults when contributing new files:
+### Formatting Profiles code 
 
 ```
 [*.ts]
