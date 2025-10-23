@@ -10,7 +10,7 @@ Follow these steps before proposing edits or automated review comments.
 4. Avoid feedback on code snippets, inline code, or terminal examples.
 
 ### Clarity and Specificity
-- **Rule L1 – Use a neutral, instructional voice.** Avoid overt marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Prefer declarative sentences that state exactly what the page delivers.  
+- **Rule L1 – Use a neutral, instructional voice.** Avoid overt marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive).Adjectives that describes degrees of quality, goodness, completeness, or strength are allowed. Prefer declarative sentences that state exactly what the page delivers. 
   Use: `This guide explains how light clients validate blocks on Polkadot.`  
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
 - **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
@@ -20,8 +20,10 @@ Follow these steps before proposing edits or automated review comments.
 - **Rule L6 – Keep sentences concise.** Aim for 60–150 characters per sentence to ensure readability while preserving full meaning.
 - **Rule L7 – Active voice for procedures.** Use active voice in instructions ("Click Connect") while passive voice remains acceptable in conceptual summaries.
 
+
 ### Formal vs Informal Voice
-- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without contractions or first-person plural pronouns.
+- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without first-person plural pronouns. General contractions are allowed in formal writing (for example, "don't," "it's," "you're") to improve flow, but avoid colloquialisms or slang.  
+
 - **Rule L9 – Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
   - The front matter includes `type: tutorial` or a similar tutorial flag, or
   - The file resides in a tutorials directory (for example, `/tutorials/`, `/get-started/`), or
