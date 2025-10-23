@@ -1,0 +1,854 @@
+# kluster.ai llms-full.txt
+kluster.ai. kluster.ai provides the technology to verify and trust AI responses in real time. Developers can validate outputs, detect hallucinations, and ensure response reliability across any model, with minimal integration effort.
+
+## Generated automatically. Do not edit directly.
+
+Documentation: https://docs.kluster.ai
+
+## List of doc pages:
+Doc-Page: https://raw.githubusercontent.com/kluster-ai/docs/main/code-reviews/configuration/options.md
+Doc-Page: https://raw.githubusercontent.com/kluster-ai/docs/main/code-reviews/configuration/rules.md
+Doc-Page: https://raw.githubusercontent.com/kluster-ai/docs/main/code-reviews/examples/cursor-firebase-nextjs.md
+Doc-Page: https://raw.githubusercontent.com/kluster-ai/docs/main/code-reviews/examples/vscode-admin-endpoint.md
+Doc-Page: https://raw.githubusercontent.com/kluster-ai/docs/main/code-reviews/quickstart.md
+Doc-Page: https://raw.githubusercontent.com/kluster-ai/docs/main/code-reviews/tools.md
+
+## Full content for each doc page
+
+Doc-Content: https://docs.kluster.ai/code-reviews/configuration/options/
+--- BEGIN CONTENT ---
+---
+title: Options
+description: Configure kluster.ai Code Reviews settings including sensitivity levels, bug types, and enabled tools for AI-generated code reviews.
+---
+
+# Options
+
+You can customize the [kluster.ai](https://www.kluster.ai/){target=_blank} Code Reviews behavior through the platform settings or directly in your IDE. This allows you to tailor the review process to your specific needs, such as configuring sensitivity levels for issue reporting, selecting which types of bug checks to perform, and enabling or disabling specific MCP tools to match your development workflow.
+
+![Code Review Options interface showing three numbered sections: Sensitivity Settings, Code Review Scope, and Enabled Tools](/images/code-reviews/code/configuration/configuration-1.webp)
+
+## 1. Sensitivity settings
+
+Configure the minimum sensitivity level for the Real-time Code Review tool's issue reporting. Set your threshold based on your team's needs:
+
+- `Low`: Detects even the smallest potential issues.
+- `Medium`: Suitable for projects requiring strong security and high code quality.
+- `High`: (Recommended) Balances strong protection against LLM hallucination and security issues with performance.
+- `Critical`: Focuses only on critical issues for faster iteration and smoother coding experience.
+
+The ideal setting depends on your use case. For example, a **High** level is a good starting point, but you might want to set it to **Medium** for production code.
+
+## 2. Code review scope
+
+Select which types of issues the Real-time Code Review tool detects during code analysis. You have full control over which bug types to check for through simple on/off toggles.
+
+|     Type      |           Description           |                Example                |
+|:-------------:|:-------------------------------:|:-------------------------------------:|
+|   `intent`    | Code doesn't match user request | User asked for sorting, got filtering |
+|  `semantic`   |          Logic errors           |        Missing error handling         |
+|  `knowledge`  |    Best practice violations     |       Not following conventions       |
+| `performance` |       Performance issues        |        Inefficient algorithms         |
+|   `quality`   |      Code quality problems      |        Poor naming, complexity        |
+|   `logical`   |          Logic errors           |           Off-by-one errors           |
+|  `security`   |    Security vulnerabilities     |          SQL injection risks          |
+
+## 3. Enabled tools
+
+Control which review tools run in your development environment. Enable or disable each tool based on your project's specific needs and workflow.
+
+- `Real-time Code Review`: For code quality reviews.
+- `Dependency Analysis`: For package and dependency security.
+
+## Next steps
+
+- [Create custom rules](/code-reviews/configuration/rules/): Add project-specific development standards.
+- [View tools reference](/code-reviews/tools/): Understand the technical API details.
+- [Set up integrations](/code-reviews/quickstart/): Configure IDE integrations.
+--- END CONTENT ---
+
+Doc-Content: https://docs.kluster.ai/code-reviews/configuration/rules/
+--- BEGIN CONTENT ---
+# Custom rules
+
+Rules define practices, guidelines, and patterns that maintain code quality for your projects. When connected to GitHub, each repository becomes a project with its own learned rules. You can also create manual rules that apply globally or to specific projects. [kluster.ai](https://kluster.ai){target=_blank} Code Reviews automatically checks newly generated code against these rules.
+
+## Rule types
+
+- **Manual rules**: Custom rules you create based on your team's specific requirements and coding standards.
+- **Learned rules**: Automatically extracted from your GitHub repositories, continuously updated to reflect your codebase patterns.
+
+## Set up instructions
+
+You can create manual rules to enforce your team's coding standards or connect GitHub to automatically extract patterns from your repositories. Rules can be applied globally or to specific projects.
+
+!!! info "Extraction rate limit"
+    Rule extraction from repositories is limited to once per hour. Wait 60 minutes between extraction requests.
+
+1. **Access the platform**: Navigate to [Custom Code Review Rules](https://platform.kluster.ai/custom-code-review-rules){target=_blank}.
+
+2. **Connect GitHub** (Optional): Connect your GitHub account to enable project-specific rules. In this context, each GitHub repository is treated as a 'project' - Code Reviews learns patterns from each repository and applies those specific rules when reviewing code for that project.
+
+    ![Connect to GitHub](/images/code-reviews/code/configuration/rules/rules-1.webp)
+
+3. Click **Add review rule** to create custom rules.
+
+    ![Add review rule button](/images/code-reviews/code/configuration/rules/rules-2.webp)
+
+4. **Configure rule scope**: Enter your rule and select the scope:
+    - **All**: Rules apply globally to all your coding sessions.
+    - **Project-specific**: Select a repository from the dropdown (requires GitHub connection).
+
+5. Click **Save & Add Another** to add multiple rules or **Save** to finish.
+
+    ![Add code review rule dialog](/images/code-reviews/code/configuration/rules/rules-3.webp)
+
+## Next steps
+
+- **[View all integrations](/code-reviews/quickstart/)**: Set up Code Reviews in your preferred IDE.
+- **[See real examples](/code-reviews/examples/cursor-firebase-nextjs/)**: Walk through a complete Firebase migration case study.
+--- END CONTENT ---
+
+Doc-Content: https://docs.kluster.ai/code-reviews/examples/cursor-firebase-nextjs/
+--- BEGIN CONTENT ---
+---
+title: Cursor: Firebase Authentication with Next.js
+description: See how Code Reviews catches critical issues in real-time while migrating from localStorage to Firebase authentication
+---
+
+# Cursor: Firebase authentication
+
+Learn how [Code Reviews](/code-reviews/) acts as your safety net when using Cursor AI to write code. This tutorial demonstrates a real migration from localStorage to Firebase authentication in a buy-sell e-commerce platform, showcasing how AI plans can go wrong and the four critical issues Code Reviews caught.
+
+## Prerequisites
+
+-- **A kluster.ai account**: Sign up on the [kluster.ai platform](https://platform.kluster.ai/signup){target=\_blank} if you don't have one.
+
+As kluster.ai services work via MCP, the API key is created and configured for you when setting up the relevant extensions.
+
+- [Cursor IDE installed](https://cursor.com/downloads){target="_blank"}
+
+## Setup
+
+Getting Code Reviews working in Cursor takes just one click. Visit our [quickstart guide](/code-reviews/quickstart/) and click **Add to Cursor** for automatic installation.
+
+For other IDEs, see our [MCP-compatible integration guides](/code-reviews/quickstart/).
+
+## Next.js e-commerce
+
+We built a buy-sell e-commerce platform where users post articles for purchase. The app initially used `localStorage` for user authentication, but we decided to **migrate to Firebase** for better security and user management.
+
+We used **Gemini 2.5 Flash** (Cursor's standard free model) in **agentic mode** to handle the migration while Code Reviews monitored the changes.
+
+## The prompt and AI's plan
+
+Our prompt was to _implement a real user login with Firebase_ + Firebase default app setting file.
+
+![Cursor showing e-commerce app and AI's Firebase implementation plan](/images/code-reviews/code/examples/cursor/example-cursor-1.webp)
+
+The AI responded confidently with a detailed 5-step plan:
+
+1. **Create Firebase initialization file**: Set up `src/lib/firebase.ts`.
+2. **Install Firebase**: Add the npm package.
+3. **Update authentication context**: Modify `src/contexts/AuthContext.tsx`.
+4. **Update Login API route**: Handle Firebase in `src/app/api/auth/login/route.ts`.
+5. **Update Signup API route**: Handle Firebase in `src/app/api/auth/signup/route.ts`.
+
+
+## Plan vs. implementation outcomes
+
+The AI's 5-step implementation plan achieved just 20% success rate, with four critical failures.
+
+| Step | Task | Result |
+|------|------|--------|
+| 1 | Firebase initialization | ❌ Failed - Incomplete implementation |
+| 2 | Install Firebase | ✅ Success |
+| 3 | Update AuthContext | ❌ Failed - Architecture regression |
+| 4 | Update login API | ❌ Failed - Breaking changes |
+| 5 | Update signup API | ❌ Failed - Security vulnerabilities |
+
+The AI got confused between steps 3-4, couldn't decide between direct Firebase calls vs API routes, kept reverting working code, and made **multiple correction attempts** throughout the implementation.
+
+## Key issues caught by Code Reviews
+
+The AI made four key mistakes along the way, escalating from simple import issues to reverting the entire Firebase implementation. Below, we examine each catch.
+
+### Incomplete implementation
+
+What happened? AI created Firebase config but missed the actual authentication setup.
+
+```typescript
+// src/lib/firebase.ts - Step 1 attempt
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+
+const firebaseConfig = { /* config */ };
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app); // ❌ No auth setup
+```
+
+Code Reviews provided the following response:
+
+---
+
+**P1 - Intent (High)**: AI did not implement the actual user login functionality as requested.
+
+**Why this matters**: Running the app would cause runtime errors when trying to authenticate - the `auth` object simply doesn't exist.
+
+**Correct approach**:
+```typescript
+// src/lib/firebase.ts - Corrected
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth"; // ✅ Added
+
+const firebaseConfig = { /* config */ };
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const auth = getAuth(app); // ✅ Initialize auth
+
+export { app, auth, analytics }; // ✅ Export auth
+```
+
+---
+
+### Breaking changes
+
+What happened? AI removed the working Firebase login logic from the API route.
+
+```typescript
+// src/app/api/auth/login/route.ts - Working version
+export async function POST(req: NextRequest) {
+  const { email, password } = await req.json();
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  return NextResponse.json({ message: "Login successful", user: user.toJSON() });
+}
+```
+
+```typescript
+// AI's "fix" - Step 4 attempt
+export async function POST(req: NextRequest) {
+  return NextResponse.json({ message: "Not used for direct login" }); // ❌ Removed logic
+}
+```
+
+The screenshot below shows Cursor's interface with Code Reviews's alert panel displaying a critical P1 Intent violation. The alert clearly identifies that the AI removed working Firebase authentication logic from the login API route, replacing functional code with a placeholder response.
+
+![Code Reviews alert showing breaking changes detected in login API route](/images/code-reviews/code/examples/cursor/example-cursor-2.webp){ width="75%" }
+
+Code Reviews provided the following response:
+
+---
+
+**P1 - Intent (High)**: AI removed Firebase login implementation instead of maintaining it.
+
+**Why this matters**: AI replaced working authentication logic with a non-functional placeholder response, breaking the API contract.
+
+**Correct approach**: Keep the original working Firebase authentication logic.
+
+---
+
+### Security vulnerabilities
+
+What happened? AI created a signup endpoint without input validation.
+
+```typescript
+// src/app/api/auth/signup/route.ts - Step 5 attempt
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { email, password, name } = body; // ❌ No validation!
+  
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+}
+```
+
+Code Reviews provided the following response:
+
+---
+
+**P3 - Security (High)**: Lack of input validation for signup data.
+
+**Why this matters**: Malformed data could crash the server, invalid emails cause Firebase errors, weak passwords accepted.
+
+**Correct approach**:
+
+```typescript
+import { SignupSchema } from '@/lib/validation';
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  
+  // ✅ Validate input
+  const validationResult = SignupSchema.safeParse(body);
+  if (!validationResult.success) {
+    return NextResponse.json({
+      error: 'Validation failed',
+      details: validationResult.error.issues
+    }, { status: 400 });
+  }
+  
+  const { email, password, name } = validationResult.data;
+  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+}
+```
+
+---
+
+### Architecture regression
+
+What happened? AI reverted the Firebase authentication logic back to the `localStorage` approach.
+
+```typescript
+// src/contexts/AuthContext.tsx - Correct Firebase approach
+const login = async (email: string, password: string) => {
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  return !!userCredential.user;
+};
+```
+
+```typescript
+// AI reverted to original localStorage approach
+const [user, setUser] = useState(() => {
+  const savedUser = localStorage.getItem('user'); // ❌ Back to localStorage!
+  return savedUser ? JSON.parse(savedUser) : null;
+});
+
+const login = async (email: string, password: string) => {
+  const response = await fetch('/api/auth/login', { // ❌ API calls instead of Firebase
+    method: 'POST',
+    body: JSON.stringify({ email, password })
+  });
+};
+```
+
+The screenshot below displays Cursor with Code Reviews's alert highlighting a P1 Intent violation. The alert detects that the AI has regressed the authentication architecture by reverting from the Firebase implementation back to the original localStorage and API-based approach, undoing the intended migration.
+
+![Code Reviews alert showing architecture regression from Firebase back to localStorage](/images/code-reviews/code/examples/cursor/example-cursor-3.webp){ width="75%" }
+
+
+Code Reviews provided the following response:
+
+---
+
+**P1 - Intent (High)**: AI reverted Firebase authentication implementation back to using localStorage and API calls.
+
+**Why this matters**: Lost all Firebase benefits like real-time auth state, secure token management, and cross-device sessions. Back to the original problems we were trying to solve.
+
+**Correct approach**:
+```typescript
+// src/contexts/AuthContext.tsx
+const login = async (email: string, password: string) => {
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  return !!userCredential.user;
+};
+```
+
+---
+
+## Summary of results
+
+Code Reviews caught **four critical issues** across a "simple" five-step plan:
+
+1. **Incomplete implementation** - Step one missed core functionality.
+2. **Breaking changes** - Step four deleted working code.
+3. **Security vulnerabilities** - Step five ignored input validation.
+4. **Architecture regression** - Step three went backwards.
+
+By following Code Reviews's guidance at each step, Gemini 2.5 Flash completed the Firebase migration. Users can now register and authenticate properly.
+
+The following image shows the Firebase console showing the `code@verify.com` user creation:
+
+![Firebase Authentication console showing successfully created users](/images/code-reviews/code/examples/cursor/example-cursor-4.webp)
+
+Users can now successfully login into the e-commerce app and Firebase user created:
+
+![E-commerce app showing successful login with code@verify.com user](/images/code-reviews/code/examples/cursor/example-cursor-5.webp)
+
+The migration from `localStorage` to Firebase authentication was completed without the typical debugging cycles. [Code Reviews](/code-reviews/) caught each issue in real-time, allowing us to fix problems immediately rather than discovering them during testing.
+
+## Key takeaways
+
+Even with clear prompts and detailed plans, AI execution can go wrong. Code Reviews acts as your safety net, catching issues before they compound into debugging nightmares.
+
+The more complex the task, the more valuable this real-time verification becomes.
+
+**Learn more**: Explore our [tools reference](/code-reviews/tools/) to understand all issue types and priority levels that Code Reviews monitors.
+--- END CONTENT ---
+
+Doc-Content: https://docs.kluster.ai/code-reviews/examples/vscode-admin-endpoint/
+--- BEGIN CONTENT ---
+---
+title: VS Code: Secure Admin Endpoints with Express
+description: Learn how Code Reviews prevents critical security vulnerabilities when AI creates admin endpoints with hardcoded credentials
+---
+
+# VS Code: Secure Admin Endpoints
+
+Discover how [Code Reviews](/code-reviews/) catches critical security flaws when using VS Code with GitHub Copilot Chat to create admin endpoints. This tutorial demonstrates a real scenario where AI introduces a production-breaking security vulnerability while implementing a database reset endpoint.
+
+## Prerequisites
+
+-- **A kluster.ai account**: Sign up on the [kluster.ai platform](https://platform.kluster.ai/signup){target=\_blank} if you don't have one.
+
+As kluster.ai services work via MCP, the API key is created and configured for you when setting up the relevant extensions.
+
+- [VS Code installed](https://code.visualstudio.com/download){target="_blank"}
+- [GitHub Copilot Chat extension](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat){target="_blank"}
+
+## Setup
+
+Getting Code Reviews working in VS Code takes just one click. Visit the [Code Reviews quickstart guide](/code-reviews/quickstart/#__tabbed_1_2) and click **Add to VS Code** for automatic installation.
+
+## Express API with product management
+
+This Express API manages a product catalog with full CRUD operations. The API uses a `DataManager` class for persistence and includes Swagger documentation for easy testing. Everything works perfectly until the team needs a way to reset the database for testing and emergency scenarios.
+
+The team decided to add an **admin endpoint** to delete all products - a seemingly simple task that AI turned into a security nightmare.
+
+## The prompt and AI's response
+
+Our prompt was straightforward: _"Add an admin endpoint to delete all products from the database."_
+
+![VS Code showing the Express API and Copilot Chat with Claude Sonnet's implementation plan](/images/code-reviews/code/examples/vscode/example-vscode-1.webp)
+
+GitHub Copilot Chat (powered by Claude Sonnet) responded confidently with a 4-step implementation plan:
+
+1. **Add deleteAllProducts method**: Extend the DataManager class.
+2. **Create admin endpoint**: Implement DELETE /admin/reset-database.
+3. **Add authentication**: Secure with admin key validation.
+4. **Update Swagger docs**: Document the new endpoint.
+
+The AI appeared to execute flawlessly, creating all the necessary code in seconds.
+
+## The implementation result
+
+The AI executed its 4-step plan quickly, creating a working admin endpoint that passed all functional tests. But working code isn't always secure code.
+
+## The critical security vulnerability
+
+The AI created a functional admin endpoint with authentication, but included a dangerous fallback that could expose production databases to unauthorized deletion:
+
+```javascript
+// server.js - AI's implementation
+app.delete('/admin/reset-database', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'] || req.query.adminKey;
+  const expectedAdminKey = process.env.ADMIN_KEY || 'admin123'; // ❌ CRITICAL: Hardcoded default
+  
+  if (!adminKey || adminKey !== expectedAdminKey) {
+    return res.status(401).json({ 
+      error: 'Unauthorized: Invalid admin key'
+    });
+  }
+  // ... rest of implementation
+});
+```
+
+The line `process.env.ADMIN_KEY || 'admin123'` creates a catastrophic security hole. If the environment variable is missing, the endpoint uses a publicly known default. This means 'admin123' becomes a backdoor key that works in production if the environment isn't properly configured - turning a simple misconfiguration into a database deletion vulnerability.
+
+## Code Reviews catches the vulnerability
+
+![VS Code with Code Reviews alert showing P2 Critical security issue for hardcoded admin credentials](/images/code-reviews/code/examples/vscode/example-vscode-2.webp)
+
+Code Reviews immediately identified the critical security flaw:
+
+---
+
+**P2 - Security (Critical)**: Hardcoded default admin key in the server-side code.
+
+**Why this matters**: The `expectedAdminKey` falls back to a hardcoded default value ('admin123') when the environment variable is not set. If the `ADMIN_KEY` environment variable is ever missing or misconfigured in production, the system defaults to a publicly known, hardcoded key that attackers could easily discover.
+
+**Required fix**: Remove the hardcoded default value. Change from `process.env.ADMIN_KEY || 'admin123'` to `process.env.ADMIN_KEY`. Add validation to ensure the environment variable is set, logging a critical error if missing.
+
+---
+
+Beyond the immediate security fix, Code Reviews also recommended strengthening the admin endpoint with additional layers of protection: implementing multi-factor authentication (MFA) or role-based access control (RBAC), adding rate limiting to prevent brute-force attacks, and setting up comprehensive audit logging for all access attempts. These security recommendations can be customized in your [configuration settings](/code-reviews/tools/#configuration-settings) to match your team's specific security requirements.
+
+## The secure implementation
+
+Following Code Reviews's guidance, the solution eliminates the backdoor by removing `|| 'admin123'` entirely. The secure implementation validates that `process.env.ADMIN_KEY` exists and returns a 503 Service Unavailable if it's missing.
+
+```javascript
+// Before - VULNERABLE
+// const expectedAdminKey = process.env.ADMIN_KEY || 'admin123'; // ❌ Hardcoded fallback
+
+// After - SECURE
+const expectedAdminKey = process.env.ADMIN_KEY;
+
+if (!expectedAdminKey) {
+  console.error('CRITICAL SECURITY ERROR: ADMIN_KEY environment variable is not set');
+  return res.status(503).json({ 
+    error: 'Service unavailable: Admin endpoint not configured'
+  });
+}
+
+const adminKey = req.headers['x-admin-key'] || req.query.adminKey;
+
+if (!adminKey || adminKey !== expectedAdminKey) {
+  return res.status(401).json({ 
+    error: 'Unauthorized: Invalid or missing admin key'
+  });
+}
+```
+
+
+
+
+## Summary of results
+
+![VS Code showing the successfully implemented secure admin endpoint with proper authentication](/images/code-reviews/code/examples/vscode/example-vscode-3.webp)
+
+Code Reviews prevented a critical security vulnerability from reaching production:
+
+1. **Caught the hardcoded credential** - Identified the fallback value immediately.
+2. **Provided secure alternative** - Guided proper environment-based authentication.
+3. **Enforced configuration** - Ensured the endpoint fails safely when misconfigured.
+4. **Improved security posture** - Added audit logging and proper error handling.
+
+Without Code Reviews, this vulnerability could have:
+
+- Exposed production databases to deletion.
+- Created compliance violations.
+- Led to data loss incidents.
+- Required emergency patches.
+
+## Key takeaways
+
+Admin endpoints require special security attention that AI often misses:
+
+- **Never use hardcoded fallbacks** for authentication credentials.
+- **Fail safely** when configuration is missing.
+- **Validate environment** at startup.
+- **Log admin actions** for audit trails.
+- **Test all scenarios** including misconfiguration.
+
+[Code Reviews](/code-reviews/) acts as your security safety net, catching vulnerabilities that look functional but hide critical flaws. The more powerful the operation, the more critical this protection becomes.
+
+**Learn more**: Explore our [security reference](/code-reviews/tools/#bug-check-types) to understand all vulnerability types that Code Reviews monitors.
+--- END CONTENT ---
+
+Doc-Content: https://docs.kluster.ai/code-reviews/quickstart/
+--- BEGIN CONTENT ---
+---
+title: Get started with Code Reviews
+description: Set up kluster.ai Code Reviews in minutes. Scan AI-generated code for errors, vulnerabilities, and performance issues with Cursor and AI assistants.
+---
+
+# Get started with Code Reviews
+
+Modern developers increasingly rely on AI coding assistants to accelerate development, but this speed comes with risks. Generated code may contain logic errors, security flaws, or performance issues that compromise application quality and security.
+
+The [kluster.ai](https://www.kluster.ai/){target=\_blank} Code Reviews service integrates directly into your development workflow, automatically scanning AI-generated code in real-time. It catches potential issues instantly within your IDE, allowing you to ship code confidently while maintaining the speed benefits of AI-assisted development.
+
+## Prerequisites
+
+Before getting started, ensure you have:
+
+-- **A kluster.ai account**: Sign up on the [kluster.ai platform](https://platform.kluster.ai/signup){target=\_blank} if you don't have one.
+
+As kluster.ai services work via MCP, the API key is created and configured for you when setting up the relevant extensions.
+
+## Setup instructions
+
+=== "Cursor"
+    
+    1. Click the **Add to Cursor** button below.
+        
+         -[:octicons-arrow-right-24: Add to Cursor](cursor:extension/klusterai.kluster-verify-code){target=_blank .md-button .md-button--primary}
+    
+    2. Cursor will open and prompt for extension installation.
+    
+    3. Click **Install** to add the extension into Cursor.
+
+        ![Extension Installation Prompt in Cursor](/images/code-reviews/code/integrations/cursor/cursor-integration-1.webp)
+
+    Once installed, you can verify the setup:
+
+    1. Open **Cursor Settings**. You can use the gear icon in the top right corner to do so.
+    2. Navigate to **Tools & Integrations** → **MCP Tools**.
+    3. You should see **extension-Kluster-Code-Reviews** with all tools enabled:
+
+        -- **`kluster_code_review_auto`**: Automatic code security, quality, and compliance verification.
+- **`kluster_dependency_validator`**: Dependency health and risk validation.
+- **`kluster_code_review_manual`**: On-demand, user-requested per-file verification (security, quality, compliance).
+
+        ![Active MCP Tools in Cursor](/images/code-reviews/code/integrations/cursor/cursor-integration-2.webp)
+
+=== "VS Code"
+   
+    1. Click the **Add to VS Code** button below: 
+        
+         -[:octicons-arrow-right-24: Add to VS Code](vscode:extension/klusterai.kluster-verify-code){target=_blank .md-button .md-button--primary}
+    
+    2. VS Code will open and display the extension.
+    
+    3. Click **Install** to get the extension.
+
+        ![Install Extension](/images/code-reviews/code/integrations/vscode/vscode-integration-0.webp)
+
+    4. Select **Trust Publisher & Install**.
+
+        ![Trust publisher](/images/code-reviews/code/integrations/vscode/vscode-integration-1.webp)
+
+    Now that the extension is installed, you need to log in with your kluster.ai account:
+       
+    1. Click on **Sign in** in the bottom right corner.
+       ![Sign In](/images/code-reviews/code/integrations/vscode/vscode-integration-2.webp)
+
+    2. Choose **Open**. A browser pop-up window will take you to your kluster.ai account. 
+
+        ![Open Pop-up](/images/code-reviews/code/integrations/vscode/vscode-integration-3.webp)
+          
+    3. Click **Open Visual Studio Code**.
+
+        ![Open Visual Studio Code](/images/code-reviews/code/integrations/vscode/vscode-integration-4.webp)
+
+    4. Click **Open** to install the MCP with your kluster.ai API key.
+        
+        ![Open and Install MCP](/images/code-reviews/code/integrations/vscode/vscode-integration-5.webp)
+
+    5. To complete the setup, click **Install** to accept the MCP configuration for Code Reviews. 
+    
+         ![Install MCP](/images/code-reviews/code/integrations/vscode/vscode-integration-6.webp)
+    6. Press **Trust** to Install the MCP server.
+    ![MCP Server Trust Installation in VS Code](/images/code-reviews/code/integrations/vscode/vscode-integration-7.webp)
+        
+    Once installed, verify the setup:
+    
+    1. Open a Copilot chat window and select the **Tools** button on the bottom right corner.
+    2. Scroll down the list and **Kluster-Code-Reviews-MCP** should appear. Make sure both tools enabled.
+
+        ![Active MCP Tools in VS Code](/images/code-reviews/code/integrations/vscode/vscode-integration-8.webp)
+
+=== "Claude Code"
+
+    **Terminal installation**
+    
+    Visit the [kluster.ai platform get started page](https://platform.kluster.ai){target=\_blank} and copy the Claude Code configuration snippet. This will include your API key.
+
+    The command is similar to:
+    
+    -```bash
+curl -s https://platform.kluster.ai/install-kluster-mcp-claude-code.sh | bash -s YOUR_API_KEY
+```
+    
+    This command will:
+
+    - Download the kluster.ai MCP server.
+    - Configure Claude Code settings.
+    - Set up your API key.
+    - Enable both review tools.
+
+    -<div id="termynal" data-termynal>
+  <span data-ty="input">franzuzz@MacBook-Pro-de-Jean mcp-demo % curl -s https://platform.kluster.ai/install-kluster-mcp-claude-code.sh | bash -s YOUR_API_KEY</span>
+  <span data-ty>Installing Kluster.ai server...</span>
+  <span data-ty>✅ Installation complete!</span>
+  <span data-ty>Restart Claude Code to apply the new rules</span>
+  <span data-ty>Happy {K}oding ;)</span>
+</div>
+      
+    Once installed, verify the setup:
+    
+    1. Run the `/mcp` command in Claude Code.
+
+        -<div id="termynal" data-termynal>
+  <span data-ty="input">claude /mcp</span>
+  <span data-ty></span>
+  <span data-ty>✨ Welcome to Claude Code!</span>
+  <span data-ty>/help for help, /status for your current setup</span>
+  <span data-ty>cwd: /Users/franzuzz/code/demos/claude-code/mcp-demo</span>
+  <span data-ty></span>
+  <span data-ty>Tips for getting started:</span>
+  <span data-ty>Ask Claude to create a new app or clone a repository</span>
+  <span data-ty>Use Claude to help with file analysis, editing, bash commands and git</span>
+  <span data-ty>Be as specific as you would with another engineer for the best results</span>
+  <span data-ty>✔ Run /terminal-setup to set up terminal integration</span>
+  <span data-ty></span>
+
+  <span data-ty="input">/mcp</span>
+  <span data-ty>Manage MCP servers</span>
+  <span data-ty>  1. kluster-verify ✔ connected • Enter to view details</span>
+  <span data-ty></span>
+  <span data-ty>MCP Config locations (by scope):</span>
+  <span data-ty> • User config: /Users/franzuzz/.claude.json</span>
+  <span data-ty> • Project config (shared via .mcp.json):</span>
+  <span data-ty>   /Users/franzuzz/code/demos/claude-code/mcp-demo/.mcp.json (file does not exist)</span>
+  <span data-ty> • Local config (private to this project):</span>
+  <span data-ty>   /Users/franzuzz/.claude.json [project: /Users/franzuzz/code/demos/claude-code/mcp-demo]</span>
+  <span data-ty></span>
+  <span data-ty>For help configuring MCP servers, see:</span>
+  <span data-ty>https://docs.anthropic.com/en/docs/claude-code/mcp</span>
+</div>
+
+    2. Select **kluster-code-reviews** in the MCP menu list and press enter to **View tools**.
+
+        -<div id="termynal" data-termynal>
+  <span data-ty>Kluster-verify MCP Server</span>
+  <span data-ty>Status: ✔ connected</span>
+  <span data-ty>Command: npx</span>
+  <span data-ty>Args: -y @klusterai/kluster-verify-code-mcp@latest</span>
+  <span data-ty>Config location: /Users/franzuzz/.claude.json</span>
+  <span data-ty>Capabilities: tools</span>
+  <span data-ty>Tools: 3 tools</span>
+  <span data-ty></span>
+  <span data-ty>  1. View tools</span>
+  <span data-ty>  2. Reconnect</span>
+</div>
+
+    3. Select **View tools** to see the tools for **kluster-code-reviews** listed, including:
+        
+        -- **`kluster_code_review_auto`**: Automatic code security, quality, and compliance verification.
+- **`kluster_dependency_validator`**: Dependency health and risk validation.
+- **`kluster_code_review_manual`**: On-demand, user-requested per-file verification (security, quality, compliance).
+
+        -<div id="termynal" data-termynal>
+  <span data-ty>Tools for kluster-verify (3 tools)</span>
+  <span data-ty>  1. kluster_code_review_auto</span>
+  <span data-ty>  2. kluster_dependency_validator</span>
+  <span data-ty>  3. kluster_code_review_manual</span>
+</div>
+
+## Next steps
+
+- **[Cursor example](/code-reviews/examples/cursor-firebase-nextjs/)**: See a real-world case study using Cursor.
+- **[VS-Code example](/code-reviews/examples/vscode-admin-endpoint/)**: See a real-world case study using VS-Code.
+--- END CONTENT ---
+
+Doc-Content: https://docs.kluster.ai/code-reviews/tools/
+--- BEGIN CONTENT ---
+---
+title: Code MCP Tools for Code Reviews 
+description: Learn how kluster.ai Code MCP tools work: parameters, response formats, issue categories, and settings for real-time code reviews.
+---
+
+# Tools reference
+
+The [kluster.ai](https://www.kluster.ai/){target=_blank} Code MCP server provides review tools for checking AI-generated code quality and security. These tools enable real-time code reviews directly within your IDE through MCP integration.
+
+It includes:
+
+- **`kluster_code_review_auto`**: Automatically reviews code quality and detects bugs, including logic errors, security issues, and performance problems. Triggers automatically when code is generated or modified. Best for real-time reviews during active coding sessions, analyzing changes in context of the full conversation and related files.
+- **`kluster_dependency_validator`**: Validates the security and compliance of packages and dependencies. Triggers automatically before package installations or when package files are updated. Best for preventing vulnerable or non-compliant third-party libraries from entering your codebase before installation.
+- **`kluster_code_review_manual`**: Manually reviews specific files when explicitly requested by the user (e.g., "review this file", "check for bugs"). Best for auditing existing code, reviewing specific modules, or getting fix recommendations for individual files.
+
+This page documents the parameters and response formats you'll see when using these tools in Cursor, Claude Code, or any MCP-compatible client.
+
+## Parameters
+
+=== "Auto Review and Dependency Validator"
+
+    These tools analyze AI-generated code and dependencies to detect bugs, security vulnerabilities, and other quality issues.
+
+    ???+ interface "Parameters"
+
+        `code_diff` ++"string"++ <span class="required" markdown>++"required"++</span>
+
+        Unified diff format showing the actual changes (additions and subtractions) made to files. Use standard diff format with `--- filename` and `+++ filename` headers, followed by `@@ line numbers @@`, and `+` for additions, `-` for deletions. In MCP environments, this is often auto-extracted from IDE history.
+
+        ---
+
+        `user_requests` ++"string"++ <span class="required" markdown>++"required"++</span>
+
+        A chronological sequence of all user messages and requests in this conversation thread, with the current request (that triggered this assistant turn) clearly marked. Format: Previous requests as numbered list, then current request marked with `>>> CURRENT REQUEST: [request text]`. In MCP environments, this is often auto-extracted from conversation history.
+
+        ---
+
+        `modified_files_path` ++"string"++ <span class="required" markdown>++"required"++</span>
+
+        Full absolute paths of modified files separated by `;`.
+
+        ---
+
+        `chat_id` ++"string"++ <span class="optional" markdown>++"optional"++</span>
+
+        Session identifier returned by previous tool calls. Used to maintain context across multiple review requests.
+
+=== "Manual Review"
+
+    The manual review tool is triggered only when explicitly requested by the user.
+
+    ???+ interface "Parameters"
+
+        `user_requests` ++"string"++ <span class="required" markdown>++"required"++</span>
+
+        Chronological sequence of user messages with current request marked as `>>> CURRENT REQUEST:`. Unlike auto review, this parameter is NOT auto-extracted in MCP environments and must be explicitly provided.
+
+        ---
+
+        `modified_file_path` ++"string"++ <span class="required" markdown>++"required"++</span>
+
+        Full absolute path of the single file to review. This tool can only check one file per call.
+        
+        ---
+
+        `need_fixes` ++"boolean"++ <span class="required" markdown>++"required"++</span>
+
+        Set to `true` if user requested fixes, `false` if only requesting issue detection.
+
+        ---
+
+        `chat_id` ++"string"++ <span class="optional" markdown>++"optional"++</span>
+
+        Session identifier returned by previous tool calls. Used to maintain context across multiple review requests.
+
+## Response fields
+
+All code review tools return the same response structure:
+
+- **`isCodeCorrect`**: Boolean indicating if the code has issues.
+- **`explanation`**: Summary of all issues found.
+- **`issues`**: Array of detected problems with:
+  - **`type`**: Issue category (intent, semantic, knowledge, performance, quality, logical, security).
+  - **`severity`**: Impact level (critical, high, medium, low).
+  - **`priority`**: Execution priority (P0-P5).
+  - **`description`**: Brief issue summary.
+  - **`explanation`**: Detailed issue explanation.
+  - **`actions`**: Recommended fixes.
+- **`priority_instructions`**: Execution rules for addressing issues.
+- **`agent_todo_list`**: Prioritized list of fixes to apply.
+- **`chat_id`**: Session identifier for maintaining context across requests.
+
+### Example response
+
+```json
+{
+    "isCodeCorrect": false,
+    "explanation": "Found 1 issue. 1 critical issue needs immediate attention.\n\nTODO:\n1. [CRITICAL] The implementation introduces a critical SQL injection vulnerability.",
+    "issues": [
+        {
+            "type": "intent",
+            "severity": "critical",
+            "priority": "P0",
+            "description": "The implementation introduces a critical SQL injection vulnerability, which is an unacceptable security risk.",
+            "explanation": "The code constructs an SQL query using string concatenation with user input, which is the classic pattern for SQL injection. A function designed for database interaction should use parameterized queries.",
+            "actions": "Use parameterized queries or prepared statements to safely handle user input. For example: db.query('SELECT * FROM users WHERE id = ?', [userId])"
+        }
+    ],
+    "priority_instructions": "**PRIORITY EXECUTION RULES:**\n1. **INTENT Critical/High (P0-P1) get special priority**\n2. **All other issues sorted by severity** - Critical (P2) > High (P3) > Medium (P4) > Low (P5)\n3. **Never let lower priority issues override higher priority changes**",
+    "agent_todo_list": [
+        "**EXECUTE IN THIS EXACT ORDER:**",
+        "",
+        "**Priority P0 - INTENT CRITICAL (HIGHEST PRIORITY):**",
+        "P0.1: The implementation introduces a critical SQL injection vulnerability - Use parameterized queries or prepared statements."
+    ],
+    "chat_id": "i8ct930591"
+}
+```
+
+## Priority system
+
+Code review assigns priority levels to detected issues, helping you focus on the most critical problems first. The system automatically prioritizes based on issue type and severity.
+
+- **P0-P1**: Intent issues (highest priority) - code doesn't match request.
+- **P2**: Critical severity - must fix immediately.
+- **P3**: High severity - should fix soon.
+- **P4**: Medium severity - nice to fix.
+- **P5**: Low severity - optional improvements.
+
+
+## Next steps
+
+- **[Configure settings](/code-reviews/configuration/)**: Customize review behavior for your needs.
+- **[Set up integrations](/code-reviews/quickstart/)**: Configure IDE integrations to use these tools.
+- **[Get started](/code-reviews/quickstart/)**: Follow the quickstart guide for immediate setup.
+--- END CONTENT ---
+

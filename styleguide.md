@@ -38,15 +38,15 @@ Follow these steps before proposing edits or automated review comments.
 - Ignore findings that target code fences, inline code, or terminal snippets—code-language tags and terminal metadata.
 
 ## Links
-- Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it. The backslash keeps the underscore literal in Markdown.
+- Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it. The single backslash keeps the underscore literal in Markdown as it will be used in Mkdocs.
 - Use descriptive link text that indicates the destination. Avoid "here" or "click here."
-- When bolding linked terms, place the formatting outside the link: `**[Term](link){target=\\_blank}**`.
+- When bolding linked terms, place the formatting outside the link: `**[Term](link){target=\_blank}**`. Remember to only use a single backslash before the underscore.
 - Do not apply additional inline formatting (italics or underline) to links.
 
 ### Page Structure
 - **PS1 – Meta front matter is mandatory.** Every Markdown page must expose `title` and `description` keys in its front matter. Missing keys or empty strings must be reported.
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
-  - `description` must be 120–160 characters, written as a single sentence that describes the reader benefit. End with a period.
+  - `description` must be 110–160 characters, written as a single sentence that describes the reader benefit. End with a period.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
 - **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`).
 
