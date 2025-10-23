@@ -7,6 +7,7 @@ Follow these steps before proposing edits or automated review comments.
 1. Identify the document type (tutorial, guide, concept, or reference) by checking the front matter or directory structure.
 2. Compose suggestions as complete sentences that include terminating punctuation; aim for concise copy without sacrificing clarity.
 3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
+4. Avoid feedback on code snippets, inline code, or terminal examples.
 
 ### Clarity and Specificity
 - **Rule L1 – Use a neutral, instructional voice.** Avoid overt marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Prefer declarative sentences that state exactly what the page delivers.  
@@ -34,6 +35,7 @@ Follow these steps before proposing edits or automated review comments.
 - Assumptions about the reader's prior knowledge
 - Sales or promotional copy
 - Do not use exclamation points in formal documentation
+- Ignore findings that target code fences, inline code, or terminal snippets—code-language tags and terminal metadata.
 
 ## Links
 - Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it. The backslash keeps the underscore literal in Markdown.
@@ -116,4 +118,5 @@ Follow these steps before proposing edits or automated review comments.
 1. Identify the document type (tutorial, guide, concept, or reference) by checking the front matter or directory structure.
 2. Compose suggestions as complete sentences that include terminating punctuation; aim for concise copy without sacrificing clarity.
 3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
+4. Avoid feedback on code snippets, inline code, or terminal examples.
 
