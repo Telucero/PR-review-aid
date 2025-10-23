@@ -8,23 +8,26 @@ Follow these steps before proposing edits or automated review comments.
 2. Compose suggestions as complete sentences that include terminating punctuation; aim for concise copy without sacrificing clarity.
 3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
 4. Avoid feedback on code snippets, inline code, or terminal examples.
+5. Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
 
 ### Clarity and Specificity
-- **Rule L1 – Use a neutral, instructional voice.** Avoid overt marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive).Adjectives that describes degrees of quality, goodness, completeness, or strength are allowed. Prefer declarative sentences that state exactly what the page delivers. 
+- **Rule L1 – Use a neutral, instructional voice.** Avoid overt marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive).Adjectives that describes degrees of quality, goodness, completeness, strength, or significance are allowed. Prefer declarative sentences that state exactly what the page delivers. 
   Use: `This guide explains how light clients validate blocks on Polkadot.`  
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
 - **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
 - **Rule L3 – Address the reader as "you."** Avoid possessive language ("our," "we").
 - **Rule L4 – Write timeless documentation.** Remove wording that anchors the page to a specific calendar moment. Flag phrases such as "currently," "at the time of writing," "as of 2023," "today," "recently," or absolute timestamps that are not required for accuracy. Do **not** flag legitimate use of future or past tense (for example, "will deploy" or "was created") when the action itself occurs in that timeframe; only comment when the wording makes the guidance expire. The usage of before or after a time or event is acceptable when it indicates a condition for the instructions.
 - **Rule L5 – Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with ending punctuation. Do not drop punctuation to meet length targets.
-- **Rule L6 – Keep sentences concise.** Aim for 60–150 characters per sentence to ensure readability while preserving full meaning.
+- **Rule L6 – Keep sentences concise.** A soft word limit for at 15 characters per sentence to ensure readability while preserving full meaning.
 - **Rule L7 – Active voice for procedures.** Use active voice in instructions ("Click Connect") while passive voice remains acceptable in conceptual summaries.
 
 
-### Formal vs Informal Voice
-- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without first-person plural pronouns. General contractions are allowed in formal writing (for example, "don't," "it's," "you're") to improve flow, but avoid colloquialisms or slang.  
 
-- **Rule L9 – Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
+### Formal vs Informal Voice
+- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without first-person pronouns, however first person plural pronoun "Let's" is allowed. General contractions are allowed in formal writing (for example, "don't," "it's," "you're") to improve flow, but avoid colloquialisms or slang. Standard speech and writing are acceptable when giving instructions or examples with phrases like "be sure to".
+- **Rule L9 - Informal tone is only allowed within standard speech** Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
+
+- **Rule L10 – Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
   - The front matter includes `type: tutorial` or a similar tutorial flag, or
   - The file resides in a tutorials directory (for example, `/tutorials/`, `/get-started/`), or
   - The content explicitly walks the reader through a task step by step.  
@@ -48,7 +51,7 @@ Follow these steps before proposing edits or automated review comments.
 ### Page Structure
 - **PS1 – Meta front matter is mandatory.** Every Markdown page must expose `title` and `description` keys in its front matter. Missing keys or empty strings must be reported.
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
-  - `description` must be 110–160 characters, written as a single sentence that describes the reader benefit. End with a period.
+  - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
 - **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`).
 
@@ -109,7 +112,7 @@ Follow these steps before proposing edits or automated review comments.
 - Use italics sparingly to introduce or emphasize a new term.
 
 ### Numbers
-- Spell out zero through nine. Use numerals for 10 and above
+- Spell out zero through nine. Use numerals for 10 and above.
 
 ## How to Use This Guide
 
