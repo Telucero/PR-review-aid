@@ -90,10 +90,48 @@ jobs:
         run: |
           set -euo pipefail
 
-          jq 'map(select((.filename | test("(^|/)(\\\\.ai)(/|$)"; "i") or (.filename | test("llms"; "i"))) | not))' files.json > cleaned_files.json
-          mv cleaned_files.json files.json
+          python3 - <<'PY'
+            import json
+            import pathlib
+            import re
+            import sys
 
-          FILE_COUNT=$(jq 'length' files.json)
+            files_path = pathlib.Path("files.json")
+            try:
+                raw = files_path.read_text()
+            except FileNotFoundError:
+                print("files.json not found", file=sys.stderr)
+                sys.exit(1)
+
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                print(f"Unable to decode files.json as JSON: {exc}", file=sys.stderr)
+                print(raw)
+                data = []
+
+            if not isinstance(data, list):
+                print("files.json payload is not an array; logging contents and treating as empty list.")
+                print(raw)
+                data = []
+
+            pattern_ai_dir = re.compile(r'(^|/)\.ai(/|$)', re.IGNORECASE)
+            pattern_llms = re.compile(r'llms', re.IGNORECASE)
+
+            filtered = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                filename = item.get("filename") or ""
+                if pattern_ai_dir.search(filename) or pattern_llms.search(filename):
+                    continue
+                filtered.append(item)
+
+            files_path.write_text(json.dumps(filtered))
+            pathlib.Path("file_count.txt").write_text(str(len(filtered)))
+          PY
+
+          FILE_COUNT=$(cat file_count.txt)
           echo "file_count=${FILE_COUNT}" >> "$GITHUB_OUTPUT"
           echo "Remaining files after filter: ${FILE_COUNT}"
 
