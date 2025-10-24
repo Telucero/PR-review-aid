@@ -331,18 +331,25 @@ jobs:
               elif "position" in raw and raw["position"] is not None:
                   comment["position"] = raw["position"]
 
-              if raw.get("commit_id"):
-                  comment["commit_id"] = raw["commit_id"]
-              return comment
+              commit_id = raw.get("commit_id")
+              return comment, commit_id
 
-          comments = [c for raw in payloads if (c := normalize(raw))]
+          normalized = [normalize(raw) for raw in payloads]
+          normalized = [item for item in normalized if item is not None]
+          comments = [item[0] for item in normalized]
+          commit_ids = [item[1] for item in normalized]
+
           chunk_size = 10
           total = len(comments)
           batches = []
           for start in range(0, total, chunk_size):
               chunk = comments[start:start + chunk_size]
               summary = f"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})"
-              batches.append({"body": summary, "comments": chunk})
+              chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
+              batch = {"body": summary, "comments": chunk}
+              if len(chunk_commit_ids) == 1:
+                  batch["commit_id"] = chunk_commit_ids.pop()
+              batches.append(batch)
 
           output = {
               "status": data.get("status"),
@@ -388,7 +395,12 @@ jobs:
           for index in $(jq -r '.batches | keys[]' review_batches.json); do
             BODY_SUMMARY=$(jq -r ".batches[$index].body" review_batches.json)
             COMMENTS=$(jq ".batches[$index].comments" review_batches.json)
-            PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" '{event:"COMMENT", body:$body, comments:$comments}')
+            COMMIT_ID=$(jq -r ".batches[$index].commit_id // empty" review_batches.json)
+            if [ -n "$COMMIT_ID" ] && [ "$COMMIT_ID" != "null" ]; then
+              PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" --arg commit "$COMMIT_ID" '{event:"COMMENT", body:$body, comments:$comments, commit_id:$commit}')
+            else
+              PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" '{event:"COMMENT", body:$body, comments:$comments}')
+            fi
 
             RESP=$(curl -sS -w "%{http_code}" -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
