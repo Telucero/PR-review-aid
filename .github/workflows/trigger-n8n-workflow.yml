@@ -65,7 +65,7 @@ jobs:
 
       - name: Fetch PR files
         run: |
-          gh api repos/${{ github.repository }}/pulls/${PR_NUMBER}/files > files.json
+          gh api --paginate repos/${{ github.repository }}/pulls/${PR_NUMBER}/files --jq '.[]' | jq -s '.' > files.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -123,6 +123,9 @@ jobs:
               if not isinstance(item, dict):
                   continue
               filename = item.get("filename") or ""
+              status = (item.get("status") or "").lower()
+              if status == "removed":
+                  continue
               if pattern_ai_dir.search(filename) or pattern_llms.search(filename):
                   continue
               filtered.append(item)
