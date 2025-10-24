@@ -11,7 +11,7 @@ Follow these steps before proposing edits or automated review comments.
 5. Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
 
 ### Clarity and Specificity
-- **Rule L1 – Use a neutral, instructional voice.** Avoid overt marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive).Adjectives that describes degrees of quality, goodness, completeness, strength, or significance are allowed. Prefer declarative sentences that state exactly what the page delivers. 
+- **Rule L1 – Use a neutral, instructional voice.** Avoid explicit marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Adjectives/adverbs that describes degrees of quality, goodness, completeness, strength, or significance are allowed, for example "powerful", "flexible", "scalable", "complete", "robust", "good", and "great" are acceptable. Prefer declarative sentences that state exactly what the page delivers.
   Use: `This guide explains how light clients validate blocks on Polkadot.`  
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
 - **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
@@ -113,6 +113,9 @@ Follow these steps before proposing edits or automated review comments.
 
 ### Numbers
 - Spell out zero through nine. Use numerals for 10 and above.
+
+### Symbols
+- Avoid using symbols like `&` or `@` in body text; spell them out instead (for example, use "and" instead of "&"). This rule does not apply to code snippets, product names, or branded terms that include symbols.
 
 ## How to Use This Guide
 
