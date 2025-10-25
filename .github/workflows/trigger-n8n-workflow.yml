@@ -342,7 +342,7 @@ jobs:
           comments = [item[0] for item in normalized]
           commit_ids = [item[1] for item in normalized]
 
-          chunk_size = 10
+          chunk_size = 30
           total = len(comments)
           batches = []
           for start in range(0, total, chunk_size):

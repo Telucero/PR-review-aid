@@ -1,6 +1,6 @@
 ## How to Use This Guide
 
-Follow these steps before proposing edits or automated review comments.
+Follow these steps before proposing edits or automated review comments for technical documentation.
 
 ### Quick Checklist
 
@@ -53,18 +53,19 @@ Follow these steps before proposing edits or automated review comments.
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
   - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
-- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`).
+- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay:`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). Determine based on which punctuation is need after the task heading between `:` or none for noun phrases.
 
 ### Lists
 - Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
 - Keep list items parallel in structure and tense.
 - Full-sentence list items must end with a period. Fragmentary list items do not take end punctuation.
-- When a bulleted or numbered list starts each item with an imperative verb (for example, "Install the tool"), treat every item as a complete instruction and end it with a period even if the wording is brief.
+- When a bulleted or numbered list starts each item with an imperative verb (for example, "Install the tool"), treat every item as a complete instruction and end it with a period even if the wording is brief. For each verb try to keep the verb different to avoid repetition.
 - Do not mix fragments and sentences within the same list. Rewrite items to align with a single structure.
 - In procedural ordered lists, start each step with an imperative verb. If a step contains multiple sentences, each sentence needs appropriate punctuation.
 - Keep list indentation consistent with surrounding text. Nested lists should be indented an additional two spaces.
 - Ensure that bullets all follow similar sentence structure.
 - Colons may introduce lists within a list.
+
 
 ## Accessibility and Inclusion
 - Maintain a logical heading hierarchy beginning with a single H1.
@@ -119,7 +120,7 @@ Follow these steps before proposing edits or automated review comments.
 
 ## How to Use This Guide
 
-Follow these steps before proposing edits or automated review comments.
+Follow these steps before proposing edits or automated review comments for technical documentation.
 
 ### Quick Checklist
 
