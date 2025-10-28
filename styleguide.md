@@ -56,12 +56,12 @@ Meta tags like description may use some marketing language to improve click-thro
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
   - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
-- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay:`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). Determine based on which punctuation is need after the task heading between `:` or none for noun phrases.
+- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay:`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). 
 
 ### Lists
 - Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
 - Keep list items parallel in structure and tense.
-- Full-sentence list items must end with a period. Fragmentary list items do not take end punctuation.
+- Only full-sentence list items must end with a period and if the list item begins with a verb in any form. Nominal phrases do not need ending punctuation.
 - When a bulleted or numbered list starts each item with an imperative verb (`Install the tool`), treat every item as a complete instruction and end it with a period even if the wording is brief. For each verb try to keep the verb different to avoid repetition.
 - Imperative verbs can also be in the negative form (`Do not include private keys`), can also be in the past tense when describing completed actions (`Configured the node to...`), and can also set as a request (`to be sure that...`).
 - When list items contain multiple sentences, ensure each sentence is properly punctuated.
@@ -90,7 +90,7 @@ Meta tags like description may use some marketing language to improve click-thro
 
 ### Chicago Style Reminders
 - Capitalize the first and last word in titles and headings.
-- Capitalize nouns, pronouns, verbs, adjectives, adverbs, and subordinating conjunctions with four or more letters (for example, While, Because, After).
+- Capitalize nouns, pronouns, verbs, adjectives, adverbs, and subordinating conjunctions with five or more letters (for example, While, Because, After).
 - Lowercase articles (a, an, the), coordinating conjunctions (and, but, for, or, nor, yet, so), and short prepositions (three letters or fewer) unless they are the first or last word or part of a phrasal verb.
 - When multiple Chicago rules disagree, favor capitalization if the word is stressed and four or more letters long. Verify edge cases before recommending a change.
 
