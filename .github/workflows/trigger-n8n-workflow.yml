@@ -236,7 +236,7 @@ jobs:
             --slurpfile pr pr.json \
             --slurpfile files files.json \
             --slurpfile commits commits.json \
-            --arg diff_base64 "$(cat diff.b64)" \ 
+            --rawfile diff_base64 diff.b64 \
             --arg run_token "${{ steps.uuid.outputs.run_token }}" \
             --arg n8n_sending_token "$N8N_SENDING_TOKEN" \
             '{
