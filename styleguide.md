@@ -56,7 +56,7 @@ Meta tags like description may use some marketing language to improve click-thro
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
   - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
-- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay:`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). 
+- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). 
 
 ### Lists
 - Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
