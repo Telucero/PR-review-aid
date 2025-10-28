@@ -92,7 +92,7 @@ Meta tags like description may use some marketing language to improve click-thro
 - Capitalize the first and last word in titles and headings.
 - Capitalize nouns, pronouns, verbs, adjectives, adverbs, and subordinating conjunctions with four or more letters (for example, While, Because, After).
 - Lowercase articles (a, an, the), coordinating conjunctions (and, but, for, or, nor, yet, so), and short prepositions (three letters or fewer) unless they are the first or last word or part of a phrasal verb.
-- When multiple Chicago resources disagree, favor capitalization if the word is stressed and four or more letters long. Verify edge cases before recommending a change.
+- When multiple Chicago rules disagree, favor capitalization if the word is stressed and four or more letters long. Verify edge cases before recommending a change.
 
 ## Punctuation and Sentence Structure
 - Use the Oxford comma in lists of three or more items.
