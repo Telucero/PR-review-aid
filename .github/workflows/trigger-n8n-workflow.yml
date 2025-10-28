@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   gather-and-send:
+    # Manual dispatch is allowed, but we verify the actor has write access before continuing.
+    # Pull request runs still skip forks to avoid leaking secrets.
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request != null && github.event.pull_request.head.repo.fork == false) }}
     runs-on: ubuntu-latest
     environment: n8n-sending
@@ -33,6 +35,30 @@ jobs:
       - name: Generate Run UUID
         id: uuid
         run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
+
+      # Step 2b: Require dispatcher to have write/maintain/admin access
+      - name: Validate dispatcher permissions
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          PERMISSION=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${REPO}/collaborators/${ACTOR}/permission" \
+            --jq '.permission // ""')
+
+          case "$PERMISSION" in
+            admin|maintain|write)
+              echo "✅ ${ACTOR} has ${PERMISSION} permission."
+              ;;
+            *)
+              echo "❌ ${ACTOR} lacks write or maintain access (permission='${PERMISSION}')."
+              exit 1
+              ;;
+          esac
 
       # Step 3: Pre-flight validation
       - name: Validate setup
@@ -339,8 +365,17 @@ jobs:
 
           normalized = [normalize(raw) for raw in payloads]
           normalized = [item for item in normalized if item is not None]
-          comments = [item[0] for item in normalized]
-          commit_ids = [item[1] for item in normalized]
+          seen = set()
+          deduped = []
+          for comment, cid in normalized:
+              key = (cid or "", json.dumps(comment, sort_keys=True))
+              if key in seen:
+                  continue
+              seen.add(key)
+              deduped.append((comment, cid))
+
+          comments = [item[0] for item in deduped]
+          commit_ids = [item[1] for item in deduped]
 
           chunk_size = 30
           total = len(comments)
