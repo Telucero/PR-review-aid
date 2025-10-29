@@ -1,1 +1,0 @@
-I am testing if this new trigger script that i have pushed to main defends against randomforks.
