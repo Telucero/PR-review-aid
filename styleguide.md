@@ -9,13 +9,16 @@ Follow these steps before proposing edits or automated review comments for techn
 3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
 4. Avoid feedback on code snippets, inline code, or terminal examples.
 5. Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
+6. All Sentences must end with punctuation, either a period, colon, semicolon, or question mark as appropriate.
 
 ### Clarity and Specificity
 - **Rule L1 – Use a neutral, instructional voice.** Avoid explicit marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Adjectives/adverbs that describes degrees of quality, goodness, completeness, strength, or significance are allowed, for example "powerful", "flexible", "scalable", "complete", "robust", "good", and "great" are acceptable. Prefer declarative sentences that state exactly what the page delivers.
   Use: `This guide explains how light clients validate blocks on Polkadot.`  
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
+Meta tags like description may use some marketing language to improve click-through rates in search results, however it may not contain superlatives or unverifiable claims or explicit marketing language.
 - **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
 - **Rule L3 – Address the reader as "you."** Avoid possessive language ("our," "we").
+- **Rule L3.1 – Use inclusive language.** Avoid gendered pronouns ("he," "she") but you can use "they" third person to refer to a nouns or objects like `Evm allows you to...`. When referring to the reader, always use "you."
 - **Rule L4 – Write timeless documentation.** Remove wording that anchors the page to a specific calendar moment. Flag phrases such as "currently," "at the time of writing," "as of 2023," "today," "recently," or absolute timestamps that are not required for accuracy. Do **not** flag legitimate use of future or past tense (for example, "will deploy" or "was created") when the action itself occurs in that timeframe; only comment when the wording makes the guidance expire. The usage of before or after a time or event is acceptable when it indicates a condition for the instructions.
 - **Rule L5 – Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with ending punctuation. Do not drop punctuation to meet length targets.
 - **Rule L6 – Keep sentences concise.** A soft word limit for at 15 characters per sentence to ensure readability while preserving full meaning.
@@ -53,13 +56,15 @@ Follow these steps before proposing edits or automated review comments for techn
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
   - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
-- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay:`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). Determine based on which punctuation is need after the task heading between `:` or none for noun phrases.
+- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). 
 
 ### Lists
 - Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
 - Keep list items parallel in structure and tense.
-- Full-sentence list items must end with a period. Fragmentary list items do not take end punctuation.
-- When a bulleted or numbered list starts each item with an imperative verb (for example, "Install the tool"), treat every item as a complete instruction and end it with a period even if the wording is brief. For each verb try to keep the verb different to avoid repetition.
+- Only full-sentence list items must end with a period and if the list item begins with a verb in any form. Nominal phrases do not need ending punctuation.
+- When a bulleted or numbered list starts each item with an imperative verb (`Install the tool`), treat every item as a complete instruction and end it with a period even if the wording is brief. For each verb try to keep the verb different to avoid repetition.
+- Imperative verbs can also be in the negative form (`Do not include private keys`), can also be in the past tense when describing completed actions (`Configured the node to...`), and can also set as a request (`to be sure that...`).
+- When list items contain multiple sentences, ensure each sentence is properly punctuated.
 - Do not mix fragments and sentences within the same list. Rewrite items to align with a single structure.
 - In procedural ordered lists, start each step with an imperative verb. If a step contains multiple sentences, each sentence needs appropriate punctuation.
 - Keep list indentation consistent with surrounding text. Nested lists should be indented an additional two spaces.
@@ -85,9 +90,9 @@ Follow these steps before proposing edits or automated review comments for techn
 
 ### Chicago Style Reminders
 - Capitalize the first and last word in titles and headings.
-- Capitalize nouns, pronouns, verbs, adjectives, adverbs, and subordinating conjunctions with four or more letters (for example, While, Because, After).
+- Capitalize nouns, pronouns, verbs, adjectives, adverbs, and subordinating conjunctions with five or more letters (for example, While, Because, After).
 - Lowercase articles (a, an, the), coordinating conjunctions (and, but, for, or, nor, yet, so), and short prepositions (three letters or fewer) unless they are the first or last word or part of a phrasal verb.
-- When multiple Chicago resources disagree, favor capitalization if the word is stressed and four or more letters long. Verify edge cases before recommending a change.
+- When multiple Chicago rules disagree, favor capitalization if the word is stressed and four or more letters long. Verify edge cases before recommending a change.
 
 ## Punctuation and Sentence Structure
 - Use the Oxford comma in lists of three or more items.
@@ -105,7 +110,7 @@ Follow these steps before proposing edits or automated review comments for techn
 
 ### Bold
 - Wrap bold text in double asterisks (`**bold**`).
-- Bold UI elements and terms when introducing a definition list (`**Term**: Definition`).
+- Bold UI elements and terms when introducing a definition list (`**Term**: Definition.`).
 - Bold inline code terms in description lists when the term itself is inline code.
 
 ### Italics
@@ -128,4 +133,5 @@ Follow these steps before proposing edits or automated review comments for techn
 2. Compose suggestions as complete sentences that include terminating punctuation; aim for concise copy without sacrificing clarity.
 3. Provide concrete examples only when they add clarity or are required by the rule; otherwise keep feedback focused on the change.
 4. Avoid feedback on code snippets, inline code, or terminal examples.
-
+5. Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
+6. All Sentences must end with punctuation, either a period, colon, semicolon, or question mark as appropriate.
