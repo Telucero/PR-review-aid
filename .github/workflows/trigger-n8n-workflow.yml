@@ -23,16 +23,17 @@ jobs:
     environment: n8n-sending
     outputs:
       filtered_file_count: ${{ steps.filter_files.outputs.file_count }}
-      should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
+      should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' }}
       diff_char_count: ${{ steps.diff_threshold.outputs.diff_char_count }}
       pr_number: ${{ steps.run_context.outputs.pr_number }}
       repository: ${{ steps.run_context.outputs.repository }}
       run_url: ${{ steps.run_context.outputs.run_url }}
       response_payload: ${{ steps.capture_payload.outputs.payload }}
+      cancelled: ${{ steps.send_payload.outputs.cancelled }}
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
-      MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '20' }}
+      MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '1000' }}
     steps:
       # Step 1: Checkout repository
       - name: Checkout repository
@@ -278,6 +279,7 @@ jobs:
 
       # Step 10: Send consolidated payload to n8n
       - name: Combine and send to n8n webhook
+        id: send_payload
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
@@ -285,6 +287,8 @@ jobs:
           RUN_TOKEN: ${{ steps.uuid.outputs.run_token }}
         run: |
           set -euo pipefail
+
+          echo "cancelled=false" >> "$GITHUB_OUTPUT"
 
           python3 - <<'PY'
           import json
@@ -347,6 +351,11 @@ jobs:
           STATUS=$(jq -r ".status" response_body.json)
           MATCHED=$(jq -r ".token" response_body.json)
           if [ "$MATCHED" != "${{ steps.uuid.outputs.run_token }}" ] || [ "$STATUS" != "completed" ]; then
+            if [ "$STATUS" = "cancelled" ]; then
+              echo "n8n workflow reported cancellation; skipping downstream processing."
+              echo "cancelled=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "n8n workflow failed or token mismatch"
             exit 1
           fi
@@ -358,7 +367,7 @@ jobs:
 
       - name: Capture response payload
         id: capture_payload
-        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
+        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' }}
         run: |
           set -euo pipefail
           if [ ! -s response_body.json ]; then
@@ -640,7 +649,7 @@ jobs:
     needs:
       - gather-and-send
       - receive-validate-and-comment
-    if: ${{ always() }}
+    if: ${{ always() && (needs.gather-and-send.result == 'failure' || needs.receive-validate-and-comment.result == 'failure') }}
     env:
       GATHER_RESULT: ${{ needs.gather-and-send.result }}
       RECEIVE_RESULT: ${{ needs.receive-validate-and-comment.result }}
