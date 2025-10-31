@@ -32,7 +32,7 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
-      MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '1000' }}
+      MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '200' }}
     steps:
       # Step 1: Checkout repository
       - name: Checkout repository
