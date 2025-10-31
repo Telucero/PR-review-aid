@@ -23,13 +23,15 @@ jobs:
     environment: n8n-sending
     outputs:
       filtered_file_count: ${{ steps.filter_files.outputs.file_count }}
-      should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' }}
+      should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
       diff_char_count: ${{ steps.diff_threshold.outputs.diff_char_count }}
       pr_number: ${{ steps.run_context.outputs.pr_number }}
       repository: ${{ steps.run_context.outputs.repository }}
       run_url: ${{ steps.run_context.outputs.run_url }}
       response_payload: ${{ steps.capture_payload.outputs.payload }}
       cancelled: ${{ steps.send_payload.outputs.cancelled }}
+      send_executed: ${{ steps.send_payload.outputs.executed }}
+      send_error: ${{ steps.send_payload.outputs.error }}
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
@@ -289,6 +291,8 @@ jobs:
           set -euo pipefail
 
           echo "cancelled=false" >> "$GITHUB_OUTPUT"
+          echo "executed=true" >> "$GITHUB_OUTPUT"
+          echo "error=false" >> "$GITHUB_OUTPUT"
 
           python3 - <<'PY'
           import json
@@ -333,8 +337,9 @@ jobs:
           PAYLOAD_SIZE=$(stat -c%s payload.json)
           MAX_BYTES=$((10*1024*1024))
           if (( PAYLOAD_SIZE > MAX_BYTES )); then
-            echo "Payload too large ($PAYLOAD_SIZE bytes). Aborting send."
-            exit 1
+            echo "Payload too large ($PAYLOAD_SIZE bytes)."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
@@ -357,17 +362,19 @@ jobs:
               exit 0
             fi
             echo "n8n workflow failed or token mismatch"
-            exit 1
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
-            exit 1
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
       - name: Capture response payload
         id: capture_payload
-        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' }}
+        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
         run: |
           set -euo pipefail
           if [ ! -s response_body.json ]; then
@@ -377,6 +384,12 @@ jobs:
           base64 -w0 response_body.json > response_body.b64
           echo "payload=$(cat response_body.b64)" >> "$GITHUB_OUTPUT"
           rm -f response_body.b64
+
+      - name: Enforce n8n send failure
+        if: ${{ steps.send_payload.outputs.error == 'true' }}
+        run: |
+          echo "n8n send step reported failure. Marking job as failed."
+          exit 1
 
       # Step 11: Short-circuit when nothing qualifies
       - name: No eligible files to send
@@ -649,7 +662,7 @@ jobs:
     needs:
       - gather-and-send
       - receive-validate-and-comment
-    if: ${{ always() && (needs.gather-and-send.result == 'failure' || needs.receive-validate-and-comment.result == 'failure') }}
+    if: ${{ always() && (needs.gather-and-send.result == 'failure' || needs.receive-validate-and-comment.result == 'failure') && needs.gather-and-send.outputs.send_executed != 'true' }}
     env:
       GATHER_RESULT: ${{ needs.gather-and-send.result }}
       RECEIVE_RESULT: ${{ needs.receive-validate-and-comment.result }}
@@ -661,6 +674,8 @@ jobs:
       RUN_ATTEMPT: ${{ github.run_attempt }}
       WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
       ACTOR: ${{ github.actor }}
+      SEND_EXECUTED: ${{ needs.gather-and-send.outputs.send_executed }}
+      SEND_ERROR: ${{ needs.gather-and-send.outputs.send_error }}
     steps:
       - name: Evaluate failure state
         id: alert
