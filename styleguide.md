@@ -12,7 +12,7 @@ Follow these steps before proposing edits or automated review comments for techn
 6. All Sentences must end with punctuation, either a period, colon, semicolon, or question mark as appropriate.
 
 ### Clarity and Specificity
-- **Rule L1 – Use a neutral, instructional voice.** Avoid explicit marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Adjectives/adverbs that describes degrees of quality, goodness, completeness, strength, or significance are allowed, for example "powerful", "flexible", "scalable", "complete", "robust", "good", and "great" are acceptable. Prefer declarative sentences that state exactly what the page delivers.
+- **Rule L1 – Use a neutral, instructional voice.** Avoid explicit marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Adjectives/adverbs that describes degrees of quality, goodness, completeness, strength, or significance are allowed, for example `powerful`, `flexible`, `scalable`, `complete`, `robust`, `good`, `easy` and `great` are acceptable. Prefer declarative sentences that state exactly what the page delivers.
   Use: `This guide explains how light clients validate blocks on Polkadot.`  
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
 Meta tags like description may use some marketing language to improve click-through rates in search results, however it may not contain superlatives or unverifiable claims or explicit marketing language.
@@ -46,6 +46,7 @@ Meta tags like description may use some marketing language to improve click-thro
 - Ignore findings that target code fences, inline code, or terminal snippets—code-language tags and terminal metadata.
 
 ## Links
+
 - Add `{target=\_blank}` to external links; internal anchor links on the same page do not need it. The single backslash keeps the underscore literal in Markdown as it will be used in Mkdocs.
 - Use descriptive link text that indicates the destination. Avoid "here" or "click here."
 - When bolding linked terms, place the formatting outside the link: `**[Term](link){target=\_blank}**`. Remember to only use a single backslash before the underscore.
@@ -56,20 +57,34 @@ Meta tags like description may use some marketing language to improve click-thro
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
   - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
 - **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
-- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Do not allow manually numbered headings (`1. Overview`). 
+- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Instructional heading and Task heading can be used with instructional phrases like `How it works`, `How to use`, or some similar variations as `EVM: What is it` or `EVM: How to use it` and `What to expect from this page`. Nouns are acceptable headings like `Additional Resources` and so are prepositional phrases like `In this Section`. Do not allow manually numbered headings (`1. Overview`).
+- **PS4 – Heading hierarchy.** Maintain a logical heading structure that flows from H1 to H2, H3, and so on without skipping levels. Flag any jumps (for example, H2 to H4). 
+
+### .nav.yml Structure
+- Define each navigation file with two keys only: `title` and `nav`.
+- Set `title` to the exact sidebar heading; use sentence case and omit trailing punctuation.
+- Under `nav`, list items as `'- 'Label': relative-path.md'` on single lines.
+- Quote every label with single quotes unless the text contains an apostrophe; then use double quotes.
+- Keep link targets lowercase, hyphenated, and relative—no leading `/` or `./`.
+- Indent nested `nav` entries by two spaces per level; do not mix tabs and spaces.
+- Avoid blank lines between `title`, `nav`, and their child entries.
+- 
 
 ### Lists
 - Use unordered lists for items the reader can consume in any order and ordered lists for sequential steps.
+- Use hyphen (`-`) markers for unordered lists; do not use `+` or `*`.
 - Keep list items parallel in structure and tense.
 - Only full-sentence list items must end with a period and if the list item begins with a verb in any form. Nominal phrases do not need ending punctuation.
 - When a bulleted or numbered list starts each item with an imperative verb (`Install the tool`), treat every item as a complete instruction and end it with a period even if the wording is brief. For each verb try to keep the verb different to avoid repetition.
-- Imperative verbs can also be in the negative form (`Do not include private keys`), can also be in the past tense when describing completed actions (`Configured the node to...`), and can also set as a request (`to be sure that...`).
+- Imperative verbs can also be in the negative form (`Do not include private keys`), can also be in the past tense when describing completed actions (`Configured the node to`), and can also set as a request (`to be sure that`).
 - When list items contain multiple sentences, ensure each sentence is properly punctuated.
 - Do not mix fragments and sentences within the same list. Rewrite items to align with a single structure.
 - In procedural ordered lists, start each step with an imperative verb. If a step contains multiple sentences, each sentence needs appropriate punctuation.
 - Keep list indentation consistent with surrounding text. Nested lists should be indented an additional two spaces.
 - Ensure that bullets all follow similar sentence structure.
 - Colons may introduce lists within a list.
+- 
+- Do not suggest rewrites for items that already comply with these rules; only flag actual violations.
 
 
 ## Accessibility and Inclusion
