@@ -32,7 +32,7 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
-      MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '200' }}
+      MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '20' }}
     steps:
       # Step 1: Checkout repository
       - name: Checkout repository
@@ -95,12 +95,6 @@ jobs:
           if [[ "${IS_MANUAL_RUN}" == "true" ]]; then
             echo "ℹ️ Maintainer-triggered run for PR #${PR_NUMBER}"
           fi
-
-      - name: Intentional failure for alert testing
-        if: ${{ github.event.inputs.inject_failure == 'true' }}
-        run: |
-          echo "Injecting failure to validate webhook path."
-          exit 1
 
       # Step 4: Fetch PR metadata, files, commits
       - name: Fetch PR metadata
