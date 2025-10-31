@@ -96,6 +96,12 @@ jobs:
             echo "ℹ️ Maintainer-triggered run for PR #${PR_NUMBER}"
           fi
 
+      - name: Intentional failure for alert testing
+        if: ${{ github.event.inputs.inject_failure == 'true' }}
+        run: |
+          echo "Injecting failure to validate webhook path."
+          exit 1
+
       # Step 4: Fetch PR metadata, files, commits
       - name: Fetch PR metadata
         run: |
