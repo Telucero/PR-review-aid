@@ -25,6 +25,10 @@ jobs:
       filtered_file_count: ${{ steps.filter_files.outputs.file_count }}
       should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
       diff_char_count: ${{ steps.diff_threshold.outputs.diff_char_count }}
+      pr_number: ${{ steps.run_context.outputs.pr_number }}
+      repository: ${{ steps.run_context.outputs.repository }}
+      run_url: ${{ steps.run_context.outputs.run_url }}
+      response_payload: ${{ steps.capture_payload.outputs.payload }}
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
@@ -38,6 +42,13 @@ jobs:
       - name: Generate Run UUID
         id: uuid
         run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
+
+      - name: Capture run context
+        id: run_context
+        run: |
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "repository=${GITHUB_REPOSITORY}" >> "$GITHUB_OUTPUT"
+          echo "run_url=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
       # Step 2b: Require dispatcher to have access
       - name: Validate dispatcher permissions
@@ -216,13 +227,16 @@ jobs:
         run: |
           gzip -c pr.diff > pr.diff.gz
           base64 -w 0 pr.diff.gz > diff.b64
-          SIZE=$(stat -c%s diff.b64)
-          if (( SIZE <= 131072 )); then
-            MASK=$(cat diff.b64)
-            echo "::add-mask::$MASK"
-          else
-            echo "ℹ️ diff.b64 size ${SIZE} bytes exceeds mask limit; skipping ::add-mask:: to avoid oversized command."
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          chunk_size = 8000
+          diff_contents = Path("diff.b64").read_text()
+          for start in range(0, len(diff_contents), chunk_size):
+              chunk = diff_contents[start:start + chunk_size]
+              if chunk:
+                  print(f"::add-mask::{chunk}")
+          PY
 
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
@@ -342,20 +356,23 @@ jobs:
             exit 1
           fi
 
+      - name: Capture response payload
+        id: capture_payload
+        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
+        run: |
+          set -euo pipefail
+          if [ ! -s response_body.json ]; then
+            echo "payload=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base64 -w0 response_body.json > response_body.b64
+          echo "payload=$(cat response_body.b64)" >> "$GITHUB_OUTPUT"
+          rm -f response_body.b64
+
       # Step 11: Short-circuit when nothing qualifies
       - name: No eligible files to send
         if: ${{ steps.filter_files.outputs.file_count == '0' }}
         run: echo "ℹ️ No eligible files after filtering llms/.ai paths. Skipping n8n send."
-
-      # Step 12: Archive n8n response for next job
-      - name: Upload n8n response artifact
-        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: n8n-response
-          path: response_body.json
-          if-no-files-found: error
-          retention-days: 1
 
   receive-validate-and-comment:
     runs-on: ubuntu-latest
@@ -367,12 +384,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 14: Retrieve n8n response artifact
-      - name: Download n8n response
-        uses: actions/download-artifact@v4
-        with:
-          name: n8n-response
-          path: .
+      # Step 14: Restore response payload from upstream output
+      - name: Restore response payload
+        run: |
+          set -euo pipefail
+          payload='${{ needs.gather-and-send.outputs.response_payload }}'
+          if [ -z "$payload" ]; then
+            echo "No response payload found; exiting."
+            exit 1
+          fi
+          printf '%s' "$payload" | base64 -d > response_body.json
 
       # Step 15: Confirm handshake token
       - name: Validate receiving token
@@ -607,3 +628,72 @@ jobs:
           done
 
           echo "✅ Done posting verification reviews."
+
+      # Step 18b: Clean up response artifacts
+      - name: Remove response payload
+        if: ${{ always() }}
+        run: |
+          rm -f response_body.json review_batches.json || true
+
+  notify-on-failure:
+    runs-on: ubuntu-latest
+    needs:
+      - gather-and-send
+      - receive-validate-and-comment
+    if: ${{ always() }}
+    env:
+      GATHER_RESULT: ${{ needs.gather-and-send.result }}
+      RECEIVE_RESULT: ${{ needs.receive-validate-and-comment.result }}
+      PR_NUMBER: ${{ needs.gather-and-send.outputs.pr_number }}
+      REPOSITORY: ${{ needs.gather-and-send.outputs.repository || github.repository }}
+      RUN_URL: ${{ needs.gather-and-send.outputs.run_url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+      WORKFLOW_NAME: ${{ github.workflow }}
+      RUN_ID: ${{ github.run_id }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - name: Evaluate failure state
+        id: alert
+        run: |
+          set -euo pipefail
+          gather="${GATHER_RESULT:-unknown}"
+          receive="${RECEIVE_RESULT:-skipped}"
+          if [[ "$gather" == "failure" || "$receive" == "failure" ]]; then
+            echo "alert=true" >> "$GITHUB_OUTPUT"
+            echo "Failure detected (gather=$gather, receive=$receive)."
+          else
+            echo "alert=false" >> "$GITHUB_OUTPUT"
+            echo "No downstream alert required (gather=$gather, receive=$receive)."
+          fi
+
+      - name: Send failure webhook
+        if: ${{ steps.alert.outputs.alert == 'true' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${WEBHOOK_URL:-}" ]]; then
+            echo "Webhook URL secret not configured; skipping alert dispatch."
+            exit 0
+          fi
+
+          gather="${GATHER_RESULT:-unknown}"
+          receive="${RECEIVE_RESULT:-skipped}"
+          pr="${PR_NUMBER:-unknown}"
+          repo="${REPOSITORY:-${{ github.repository }}}"
+          payload=$(jq -n \
+            --arg repo "$repo" \
+            --arg pr "$pr" \
+            --arg gather_status "$gather" \
+            --arg receive_status "$receive" \
+            --arg run_url "$RUN_URL" \
+            --arg workflow "$WORKFLOW_NAME" \
+            --arg run_id "$RUN_ID" \
+            --arg run_attempt "$RUN_ATTEMPT" \
+            --arg actor "$ACTOR" \
+            '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}' )
+
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            --data "$payload" \
+            "$WEBHOOK_URL"
