@@ -188,7 +188,7 @@ jobs:
       - name: Filter diff to excluded paths
         run: |
           python3 - <<'PY'
-          import pathlib, textwrap; exec(textwrap.dedent(\
+          import pathlib, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
 
           diff_path = Path('pr.diff')
@@ -223,6 +223,7 @@ jobs:
               out_lines.extend(current_chunk)
 
           diff_path.write_text(''.join(out_lines), encoding='utf-8')
+          '''))
           PY
 
       # Step 8: Compress & encode diff for payload
