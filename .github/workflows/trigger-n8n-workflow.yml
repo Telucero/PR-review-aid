@@ -291,29 +291,28 @@ jobs:
 
           if [ -n "${N8N_ALLOWED_HOST:-}" ]; then
             HOST=$(python3 - <<'PY'
-              import os
-              from urllib.parse import urlparse
-
-              url = os.environ.get("N8N_WEBHOOK_URL", "")
-              parsed = urlparse(url)
-              print(parsed.hostname or "")
-            PY
-            )
-            if [ -z "$HOST" ] || [ "$HOST" != "$N8N_ALLOWED_HOST" ]; then
-              echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-
-          python3 - <<'PY'
-          import json
           import os
-          from pathlib import Path
+          from urllib.parse import urlparse
 
-          root = Path(".")
+          url = os.environ.get("N8N_WEBHOOK_URL", "")
+          parsed = urlparse(url)
+          print(parsed.hostname or "")
+          'PY')
+                      if [ -z "$HOST" ] || [ "$HOST" != "$N8N_ALLOWED_HOST" ]; then
+                        echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
+                        echo "error=true" >> "$GITHUB_OUTPUT"
+                        exit 0
+                      fi
+                    fi
 
-          def read_json(filename):
+                    python3 - <<'PY'
+                    import json
+                    import os
+                    from pathlib import Path
+
+                    root = Path(".")
+
+                    def read_json(filename):
               path = root / filename
               try:
                   return json.loads(path.read_text())
@@ -399,34 +398,35 @@ jobs:
             fi
           fi
 
-          python3 - <<'PY'
+          RESPONSE_PAYLOAD=$(python3 - <<'PY'
+            import base64
             import json
             from pathlib import Path
 
             path = Path("response_body.json")
             try:
-              data = json.loads(path.read_text() or "null")
+                data = json.loads(path.read_text() or "null")
             except json.JSONDecodeError as exc:
-              raise SystemExit(f"Unable to parse response_body.json for sanitization: {exc}")
+                raise SystemExit(f"Unable to parse response_body.json for sanitization: {exc}")
 
             def sanitize(obj):
-              if isinstance(obj, dict):
-                obj.pop("receiving_token", None)
-                obj.pop("token", None)
-                obj.pop("n8n_sending_token", None)
-                for value in obj.values():
-                  sanitize(value)
-              elif isinstance(obj, list):
-                for item in obj:
-                  sanitize(item)
+                if isinstance(obj, dict):
+                    obj.pop("receiving_token", None)
+                    obj.pop("token", None)
+                    obj.pop("n8n_sending_token", None)
+                    for value in obj.values():
+                        sanitize(value)
+                elif isinstance(obj, list):
+                    for item in obj:
+                        sanitize(item)
 
             sanitize(data)
-            path.write_text(json.dumps(data))
-          PY
-
-          RESPONSE_PAYLOAD=$(base64 -w0 response_body.json)
-          echo "response_payload=$RESPONSE_PAYLOAD" >> "$GITHUB_OUTPUT"
-          rm -f response_body.json
+            serialized = json.dumps(data, separators=(',', ':')).encode("utf-8")
+            print(base64.b64encode(serialized).decode("utf-8"))
+            PY
+            )
+                      echo "response_payload=$RESPONSE_PAYLOAD" >> "$GITHUB_OUTPUT"
+                      rm -f response_body.json
 
       - name: Enforce n8n send failure
         if: ${{ steps.send_payload.outputs.error == 'true' }}
