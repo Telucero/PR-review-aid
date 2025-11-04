@@ -275,7 +275,7 @@ jobs:
 
       # Step 10: Send consolidated payload to n8n
       - name: Combine and send to n8n webhook
-id: send_payload
+        id: send_payload
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
