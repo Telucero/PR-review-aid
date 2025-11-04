@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Pull request number to process (maintainer-triggered runs)"
+        description: Pull request number to process (maintainer-triggered runs)
         required: true
         type: string
 
@@ -47,14 +47,14 @@ jobs:
       # Step 2: Generate unique run token
       - name: Generate Run UUID
         id: uuid
-        run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
+        run: echo run_token=$(uuidgen) >> $GITHUB_OUTPUT
 
       - name: Capture run context
         id: run_context
         run: |
-          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "repository=${GITHUB_REPOSITORY}" >> "$GITHUB_OUTPUT"
-          echo "run_url=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          echo pr_number=${PR_NUMBER} >> $GITHUB_OUTPUT
+          echo repository=${GITHUB_REPOSITORY} >> $GITHUB_OUTPUT
+          echo run_url=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} >> $GITHUB_OUTPUT
 
       # Step 2b: Require dispatcher to have access
       - name: Validate dispatcher permissions
@@ -66,16 +66,16 @@ jobs:
         run: |
           set -euo pipefail
           PERMISSION=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "repos/${REPO}/collaborators/${ACTOR}/permission" \
-            --jq '.permission // ""')
+            -H Accept: application/vnd.github+json \
+            repos/${REPO}/collaborators/${ACTOR}/permission \
+            --jq '.permission // ')
 
-          case "$PERMISSION" in
+          case $PERMISSION in
             admin|maintain|write)
-              echo "✅ ${ACTOR} has ${PERMISSION} permission."
+              echo ✅ ${ACTOR} has ${PERMISSION} permission.
               ;;
             *)
-              echo "❌ ${ACTOR} lacks write or maintain access (permission='${PERMISSION}')."
+              echo ❌ ${ACTOR} lacks write or maintain access (permission='${PERMISSION}').
               exit 1
               ;;
           esac
@@ -83,23 +83,23 @@ jobs:
       # Step 3: Pre-flight validation
       - name: Validate setup
         run: |
-          if [[ -z "${{ secrets.GITHUB_TOKEN }}" ]]; then
-            echo "Missing GITHUB_TOKEN secret."
+          if [[ -z ${{ secrets.GITHUB_TOKEN }} ]]; then
+            echo Missing GITHUB_TOKEN secret.
             exit 1
           fi
 
-          if [[ -z "${PR_NUMBER}" ]]; then
-            echo "No PR number provided. For manual runs, supply pr_number input."
+          if [[ -z ${PR_NUMBER} ]]; then
+            echo No PR number provided. For manual runs, supply pr_number input.
             exit 1
           fi
 
-          if [[ -z "${{ secrets.N8N_SENDING_TOKEN }}" ]]; then
-            echo "Missing N8N_SENDING_TOKEN secret."
+          if [[ -z ${{ secrets.N8N_SENDING_TOKEN }} ]]; then
+            echo Missing N8N_SENDING_TOKEN secret.
             exit 1
           fi
 
-          if [[ "${IS_MANUAL_RUN}" == "true" ]]; then
-            echo "ℹ️ Maintainer-triggered run for PR #${PR_NUMBER}"
+          if [[ ${IS_MANUAL_RUN} == true ]]; then
+            echo ℹ️ Maintainer-triggered run for PR #${PR_NUMBER}
           fi
 
       # Step 4: Fetch PR metadata, files, commits
@@ -125,9 +125,9 @@ jobs:
       - name: Fetch PR diff
         run: |
           curl -sSL \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3.diff" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER}" \
+            -H Authorization: Bearer ${{ secrets.GITHUB_TOKEN }} \
+            -H Accept: application/vnd.github.v3.diff \
+            https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER} \
             > pr.diff
 
       # Step 6: Remove .ai and llms files from metadata
@@ -136,7 +136,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          python3 -c "import json, pathlib, re, sys, textwrap; exec(textwrap.dedent('''\
+          python3 - <<'PY'
+          import json, pathlib, re, sys, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
           import json, re, sys
 
@@ -176,16 +177,17 @@ jobs:
 
           files_path.write_text(json.dumps(filtered))
           Path('file_count.txt').write_text(str(len(filtered)))
-          ''' ))"
+          PY
 
           FILE_COUNT=$(cat file_count.txt)
-          echo "file_count=${FILE_COUNT}" >> "$GITHUB_OUTPUT"
-          echo "Remaining files after filter: ${FILE_COUNT}"
+          echo file_count=${FILE_COUNT} >> $GITHUB_OUTPUT
+          echo Remaining files after filter: ${FILE_COUNT}
 
       # Step 7: Strip excluded paths from diff payload
       - name: Filter diff to excluded paths
         run: |
-          python3 -c "import pathlib, textwrap; exec(textwrap.dedent('''\
+          python3 - <<'PY'
+          import pathlib, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
 
           diff_path = Path('pr.diff')
@@ -220,7 +222,7 @@ jobs:
               out_lines.extend(current_chunk)
 
           diff_path.write_text(''.join(out_lines), encoding='utf-8')
-          ''' ))"
+          PY
 
       # Step 8: Compress & encode diff for payload
       - name: Compress filtered diff
@@ -231,10 +233,10 @@ jobs:
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
         run: |
-          echo "PR metadata size: $(stat -c%s pr.json) bytes"
-          echo "Files metadata size: $(stat -c%s files.json) bytes"
-          echo "Commits metadata size: $(stat -c%s commits.json) bytes"
-          echo "Compressed diff size: $(stat -c%s pr.diff.gz) bytes"
+          echo PR metadata size: $(stat -c%s pr.json) bytes
+          echo Files metadata size: $(stat -c%s files.json) bytes
+          echo Commits metadata size: $(stat -c%s commits.json) bytes
+          echo Compressed diff size: $(stat -c%s pr.diff.gz) bytes
 
       # Step 9b: Evaluate diff length against threshold
       - name: Evaluate diff char threshold
@@ -242,29 +244,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          THRESHOLD="${MIN_DIFF_CHAR_THRESHOLD}"
-          if [[ ! "$THRESHOLD" =~ ^[0-9]+$ ]]; then
-            echo "Invalid MIN_DIFF_CHAR_THRESHOLD='$THRESHOLD'; defaulting to 0"
+          THRESHOLD=${MIN_DIFF_CHAR_THRESHOLD}
+          if [[ ! $THRESHOLD =~ ^[0-9]+$ ]]; then
+            echo Invalid MIN_DIFF_CHAR_THRESHOLD='$THRESHOLD'; defaulting to 0
             THRESHOLD=0
           fi
 
           CHAR_COUNT=$(wc -c < pr.diff | tr -d '[:space:]')
-          echo "diff_char_count=${CHAR_COUNT}" >> "$GITHUB_OUTPUT"
-          echo "threshold=${THRESHOLD}" >> "$GITHUB_OUTPUT"
+          echo diff_char_count=${CHAR_COUNT} >> $GITHUB_OUTPUT
+          echo threshold=${THRESHOLD} >> $GITHUB_OUTPUT
 
           if (( CHAR_COUNT < THRESHOLD )); then
-            echo "skip_send=true" >> "$GITHUB_OUTPUT"
-            echo "Filtered diff char count ${CHAR_COUNT} is below threshold ${THRESHOLD}; skipping downstream send."
+            echo skip_send=true >> $GITHUB_OUTPUT
+            echo Filtered diff char count ${CHAR_COUNT} is below threshold ${THRESHOLD}; skipping downstream send.
           else
-            echo "skip_send=false" >> "$GITHUB_OUTPUT"
-            echo "Filtered diff char count ${CHAR_COUNT} meets threshold ${THRESHOLD}; continuing."
+            echo skip_send=false >> $GITHUB_OUTPUT
+            echo Filtered diff char count ${CHAR_COUNT} meets threshold ${THRESHOLD}; continuing.
           fi
 
       # Step 9c: Short-circuit when below threshold
       - name: Diff below threshold
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send == 'true' }}
         run: |
-          echo "ℹ️ Diff char count (${{ steps.diff_threshold.outputs.diff_char_count }}) is below threshold (${{ steps.diff_threshold.outputs.threshold }}). Skipping n8n send."
+          echo ℹ️ Diff char count (${{ steps.diff_threshold.outputs.diff_char_count }}) is below threshold (${{ steps.diff_threshold.outputs.threshold }}). Skipping n8n send.
 
       # Step 10: Send consolidated payload to n8n
       - name: Combine and send to n8n webhook
@@ -279,20 +281,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "cancelled=false" >> "$GITHUB_OUTPUT"
-          echo "executed=true" >> "$GITHUB_OUTPUT"
-          echo "error=false" >> "$GITHUB_OUTPUT"
+          echo cancelled=false >> $GITHUB_OUTPUT
+          echo executed=true >> $GITHUB_OUTPUT
+          echo error=false >> $GITHUB_OUTPUT
 
-          if [ -n "${N8N_ALLOWED_HOST:-}" ]; then
-            HOST=$(python3 -c "from urllib.parse import urlparse; import os; url = os.environ.get('N8N_WEBHOOK_URL', ''); print((urlparse(url).hostname) or '')")
-            if [ -z "$HOST" ] || [ "$HOST" != "$N8N_ALLOWED_HOST" ]; then
-              echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
-              echo "error=true" >> "$GITHUB_OUTPUT"
+          if [ -n ${N8N_ALLOWED_HOST:-} ]; then
+            HOST=$(python3 - <<'PY'
+            from urllib.parse import urlparse; import os; url = os.environ.get('N8N_WEBHOOK_URL', ''); print((urlparse(url).hostname) or ''))
+            if [ -z $HOST ] || [ $HOST != $N8N_ALLOWED_HOST ]; then
+              echo Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST').
+              echo error=true >> $GITHUB_OUTPUT
               exit 0
             fi
           fi
 
-          python3 -c "import json, os, textwrap; from pathlib import Path; exec(textwrap.dedent('''\
+          python3 - <<'PY'
+          import json, os, textwrap; from pathlib import Path; exec(textwrap.dedent('''\
           from pathlib import Path
           import json, os
 
@@ -326,65 +330,66 @@ jobs:
             }
 
           (root / 'payload.json').write_text(json.dumps(payload))
-            ''' ))"
+            PY
 
                       PAYLOAD_SIZE=$(stat -c%s payload.json)
                       MAX_BYTES=$((10*1024*1024))
                       if (( PAYLOAD_SIZE > MAX_BYTES )); then
-                        echo "Payload too large ($PAYLOAD_SIZE bytes)."
-                        echo "error=true" >> "$GITHUB_OUTPUT"
+                        echo Payload too large ($PAYLOAD_SIZE bytes).
+                        echo error=true >> $GITHUB_OUTPUT
                         exit 0
                       fi
 
-                      RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-                        -H "Content-Type: application/json" \
-                        -H "Authorization: Bearer $N8N_SENDING_TOKEN" \
-                        -H "X-Run-Token: $RUN_TOKEN" \
+                      RESPONSE=$(curl -s -w \n%{http_code} -X POST \
+                        -H Content-Type: application/json \
+                        -H Authorization: Bearer $N8N_SENDING_TOKEN \
+                        -H X-Run-Token: $RUN_TOKEN \
                         --data-binary @payload.json \
-                        "$N8N_WEBHOOK_URL")
+                        $N8N_WEBHOOK_URL)
 
                       rm -f payload.json || true
 
-                      HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
-                      HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+                      HTTP_BODY=$(echo $RESPONSE | sed '$d')
+                      HTTP_STATUS=$(echo $RESPONSE | tail -n1)
 
-                      echo "n8n responded with status: $HTTP_STATUS"
-                      printf %s "$HTTP_BODY" > response_body.json
+                      echo n8n responded with status: $HTTP_STATUS
+                      printf %s $HTTP_BODY > response_body.json
 
-                      STATUS=$(jq -r ".status" response_body.json)
-                      MATCHED=$(jq -r ".token" response_body.json)
-                      if [ "$MATCHED" != "${{ steps.uuid.outputs.run_token }}" ] || [ "$STATUS" != "completed" ]; then
-                        if [ "$STATUS" = "cancelled" ]; then
-                          echo "n8n workflow reported cancellation; skipping downstream processing."
-                          echo "cancelled=true" >> "$GITHUB_OUTPUT"
+                      STATUS=$(jq -r .status response_body.json)
+                      MATCHED=$(jq -r .token response_body.json)
+                      if [ $MATCHED != ${{ steps.uuid.outputs.run_token }} ] || [ $STATUS != completed ]; then
+                        if [ $STATUS = cancelled ]; then
+                          echo n8n workflow reported cancellation; skipping downstream processing.
+                          echo cancelled=true >> $GITHUB_OUTPUT
                           exit 0
                         fi
-                        echo "n8n workflow failed or token mismatch"
-                        echo "error=true" >> "$GITHUB_OUTPUT"
+                        echo n8n workflow failed or token mismatch
+                        echo error=true >> $GITHUB_OUTPUT
                         exit 0
                       fi
 
-                      if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
-                        echo "n8n workflow failed (HTTP $HTTP_STATUS)"
-                        echo "error=true" >> "$GITHUB_OUTPUT"
+                      if [ $HTTP_STATUS -lt 200 ] || [ $HTTP_STATUS -ge 300 ]; then
+                        echo n8n workflow failed (HTTP $HTTP_STATUS)
+                        echo error=true >> $GITHUB_OUTPUT
                         exit 0
                       fi
 
-                      if [ -n "${N8N_RECEIVING_TOKEN:-}" ]; then
-                        RECEIVED_TOKEN=$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' response_body.json)
-                        if [ -z "$RECEIVED_TOKEN" ]; then
-                          echo "n8n response missing receiving_token field."
-                          echo "error=true" >> "$GITHUB_OUTPUT"
+                      if [ -n ${N8N_RECEIVING_TOKEN:-} ]; then
+                        RECEIVED_TOKEN=$(jq -r 'if type==array then .[0].receiving_token else .receiving_token end // empty' response_body.json)
+                        if [ -z $RECEIVED_TOKEN ]; then
+                          echo n8n response missing receiving_token field.
+                          echo error=true >> $GITHUB_OUTPUT
                           exit 0
                         fi
-                        if [ "$RECEIVED_TOKEN" != "$N8N_RECEIVING_TOKEN" ]; then
-                          echo "Receiving token mismatch."
-                          echo "error=true" >> "$GITHUB_OUTPUT"
+                        if [ $RECEIVED_TOKEN != $N8N_RECEIVING_TOKEN ]; then
+                          echo Receiving token mismatch.
+                          echo error=true >> $GITHUB_OUTPUT
                           exit 0
                         fi
                       fi
 
-                      RESPONSE_PAYLOAD=$(python3 -c "import base64, json, textwrap; from pathlib import Path; exec(textwrap.dedent('''\
+                      RESPONSE_PAYLOAD=$(python3 - <<'PY'
+            import base64, json, textwrap; from pathlib import Path; exec(textwrap.dedent('''\
             from pathlib import Path
             import json, base64
 
@@ -408,20 +413,20 @@ jobs:
             sanitize(data)
             serialized = json.dumps(data, separators=(',', ':')).encode('utf-8')
             print(base64.b64encode(serialized).decode('utf-8'))
-            ''' ))")
-                      echo "response_payload=$RESPONSE_PAYLOAD" >> "$GITHUB_OUTPUT"
+            PY)
+                      echo response_payload=$RESPONSE_PAYLOAD >> $GITHUB_OUTPUT
                       rm -f response_body.json
 
       - name: Enforce n8n send failure
         if: ${{ steps.send_payload.outputs.error == 'true' }}
         run: |
-          echo "n8n send step reported failure. Marking job as failed."
+          echo n8n send step reported failure. Marking job as failed.
           exit 1
 
       # Step 11: Short-circuit when nothing qualifies
       - name: No eligible files to send
         if: ${{ steps.filter_files.outputs.file_count == '0' }}
-        run: echo "ℹ️ No eligible files after filtering llms/.ai paths. Skipping n8n send."
+        run: echo ℹ️ No eligible files after filtering llms/.ai paths. Skipping n8n send.
 
   receive-validate-and-comment:
     runs-on: ubuntu-latest
@@ -442,16 +447,17 @@ jobs:
         run: |
           set -euo pipefail
           payload='${{ needs.gather-and-send.outputs.response_payload }}'
-          if [ -z "$payload" ]; then
-            echo "Response payload missing; exiting."
+          if [ -z $payload ]; then
+            echo Response payload missing; exiting.
             exit 1
           fi
-          printf '%s' "$payload" | base64 -d > response_body.json
+          printf '%s' $payload | base64 -d > response_body.json
 
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
         run: |
-          python3 -c "import json, pathlib, textwrap; exec(textwrap.dedent('''\
+          python3 - <<'PY'
+          import json, pathlib, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
           import json
 
@@ -502,7 +508,7 @@ jobs:
             batches = []
             for start in range(0, total, chunk_size):
                 chunk = comments[start:start + chunk_size]
-                summary = f\"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})\"
+                summary = f\Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})\
                 chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
                 batch = {'body': summary, 'comments': chunk}
                 if len(chunk_commit_ids) == 1:
@@ -527,60 +533,60 @@ jobs:
           set -euo pipefail
 
           STATUS=$(jq -r '.status // empty' review_batches.json)
-          if [ "$STATUS" != "completed" ]; then
-            echo "n8n output not completed (status='$STATUS')"
+          if [ $STATUS != completed ]; then
+            echo n8n output not completed (status='$STATUS')
             exit 1
           fi
 
           OWNER=$(jq -r '.owner // empty' review_batches.json)
           REPO=$(jq -r '.repo // empty' review_batches.json)
           PR=$(jq -r '.pr // empty' review_batches.json)
-          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
-            echo "Missing repo context."
+          if [ -z $OWNER ] || [ -z $REPO ] || [ -z $PR ]; then
+            echo Missing repo context.
             exit 1
           fi
 
           BATCH_COUNT=$(jq '.batches | length' review_batches.json)
-          if [ "$BATCH_COUNT" -eq 0 ]; then
-            echo "No suggestions returned; nothing to post."
+          if [ $BATCH_COUNT -eq 0 ]; then
+            echo No suggestions returned; nothing to post.
             exit 0
           fi
 
-          echo "Posting $BATCH_COUNT suggestion batch(es) to $OWNER/$REPO#${PR}"
+          echo Posting $BATCH_COUNT suggestion batch(es) to $OWNER/$REPO#${PR}
 
           for index in $(jq -r '.batches | keys[]' review_batches.json); do
-            BODY_SUMMARY=$(jq -r ".batches[$index].body" review_batches.json)
-            COMMENTS=$(jq ".batches[$index].comments" review_batches.json)
-            COMMIT_ID=$(jq -r ".batches[$index].commit_id // empty" review_batches.json)
-            if [ -n "$COMMIT_ID" ] && [ "$COMMIT_ID" != "null" ]; then
-              PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" --arg commit "$COMMIT_ID" '{event:"COMMENT", body:$body, comments:$comments, commit_id:$commit}')
+            BODY_SUMMARY=$(jq -r .batches[$index].body review_batches.json)
+            COMMENTS=$(jq .batches[$index].comments review_batches.json)
+            COMMIT_ID=$(jq -r .batches[$index].commit_id // empty review_batches.json)
+            if [ -n $COMMIT_ID ] && [ $COMMIT_ID != null ]; then
+              PAYLOAD=$(jq -n --arg body $BODY_SUMMARY --argjson comments $COMMENTS --arg commit $COMMIT_ID '{event:COMMENT, body:$body, comments:$comments, commit_id:$commit}')
             else
-              PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" '{event:"COMMENT", body:$body, comments:$comments}')
+              PAYLOAD=$(jq -n --arg body $BODY_SUMMARY --argjson comments $COMMENTS '{event:COMMENT, body:$body, comments:$comments}')
             fi
 
-            RESP=$(curl -sS -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/reviews" \
-              -d "$PAYLOAD")
+            RESP=$(curl -sS -w %{http_code} -X POST \
+              -H Authorization: Bearer ${GH_TOKEN} \
+              -H Accept: application/vnd.github.v3+json \
+              https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/reviews \
+              -d $PAYLOAD)
 
-            CODE="${RESP:(-3)}"
-            BODY="${RESP%$CODE}"
+            CODE=${RESP:(-3)}
+            BODY=${RESP%$CODE}
 
-            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
-              echo "❌ Failed to post review batch (HTTP $CODE)"
-              echo "$BODY"
+            if [[ $CODE -lt 200 || $CODE -ge 300 ]]; then
+              echo ❌ Failed to post review batch (HTTP $CODE)
+              echo $BODY
               exit 1
             fi
 
-            URL=$(echo "$BODY" | jq -r '.html_url // empty')
-            echo "✅ Posted review batch ${index} ${URL:+→ $URL}"
+            URL=$(echo $BODY | jq -r '.html_url // empty')
+            echo ✅ Posted review batch ${index} ${URL:+→ $URL}
           done
 
-          echo "—— Skipped upstream (for visibility) ——"
-          jq -r 'if type=="array" then .[0] else . end | .skipped_comments // [] | .[] | "\(.file_path // "-")#L\(.line_number // "-"): \(.reason // "-")"' response_body.json
+          echo —— Skipped upstream (for visibility) ——
+          jq -r 'if type==array then .[0] else . end | .skipped_comments // [] | .[] | \(.file_path // -)#L\(.line_number // -): \(.reason // -)' response_body.json
 
-          echo "✅ Done. Suggestions posted."
+          echo ✅ Done. Suggestions posted.
 
       # Step 18: Publish any verification reviews
       - name: Post verification comments
@@ -592,77 +598,77 @@ jobs:
           RESPONSE_BODY=$(cat response_body.json)
 
           VERIFS=$(
-            echo "$RESPONSE_BODY" | jq -c '
-              (if type=="array" then .[0] else . end) as $o
+            echo $RESPONSE_BODY | jq -c '
+              (if type==array then .[0] else . end) as $o
               | def to_arr(x):
-                  if (x|type) == "array" then x
-                  elif (x|type) == "object" then [x]
-                  elif (x|type) == "string" then (try (x|fromjson) catch [])
+                  if (x|type) == array then x
+                  elif (x|type) == object then [x]
+                  elif (x|type) == string then (try (x|fromjson) catch [])
                   else [] end;
 
               [
                 (to_arr($o.reviews) // []) as $r1
-                  | ($r1 | map(select(((.type? | tostring | ascii_downcase) == "verification")))
-                            | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
+                  | ($r1 | map(select(((.type? | tostring | ascii_downcase) == verification)))
+                            | map(.formattedReview // .review // .body // .comment // .text // .content // )),
                 (to_arr($o.review) // []) as $r2
-                  | ($r2 | map(select(((.type? | tostring | ascii_downcase) == "verification")))
-                            | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
+                  | ($r2 | map(select(((.type? | tostring | ascii_downcase) == verification)))
+                            | map(.formattedReview // .review // .body // .comment // .text // .content // )),
 
                 ($o | .. | objects
-                  | select(((.type? | tostring | ascii_downcase) == "verification"))
-                  | (.formattedReview // .review // .body // .comment // .text // .content // ""))
+                  | select(((.type? | tostring | ascii_downcase) == verification))
+                  | (.formattedReview // .review // .body // .comment // .text // .content // ))
 
               ]
               | flatten
-              | map(select(type == "string" and (.|length) > 0))
+              | map(select(type == string and (.|length) > 0))
               | unique
             '
           )
 
-          COUNT=$(echo "$VERIFS" | jq 'length')
-          if [ "$COUNT" -eq 0 ]; then
-            echo "No verification reviews found; skipping."
+          COUNT=$(echo $VERIFS | jq 'length')
+          if [ $COUNT -eq 0 ]; then
+            echo No verification reviews found; skipping.
             exit 0
           fi
 
-          OWNER=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_owner else .repo_owner end // empty')
-          REPO=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_name else .repo_name end // empty')
-          PR=$(echo "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].pr_number else .pr_number end // empty')
+          OWNER=$(echo $RESPONSE_BODY | jq -r 'if type==array then .[0].repo_owner else .repo_owner end // empty')
+          REPO=$(echo $RESPONSE_BODY | jq -r 'if type==array then .[0].repo_name else .repo_name end // empty')
+          PR=$(echo $RESPONSE_BODY | jq -r 'if type==array then .[0].pr_number else .pr_number end // empty')
 
-          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
-            echo "Missing repo context; skipping verification comments."
+          if [ -z $OWNER ] || [ -z $REPO ] || [ -z $PR ]; then
+            echo Missing repo context; skipping verification comments.
             exit 0
           fi
 
-          echo "Found $COUNT verification review(s). Preview:"
-          echo "$VERIFS" | jq -r 'to_entries[] | "\(.key): " + (.value | .[0:160] + (if length>160 then "…" else "" end))'
+          echo Found $COUNT verification review(s). Preview:
+          echo $VERIFS | jq -r 'to_entries[] | \(.key):  + (.value | .[0:160] + (if length>160 then … else  end))'
 
-          echo "$VERIFS" | jq -r '.[] + "\u0000"' | while IFS= read -r -d '' BODY; do
-            if [ -z "${BODY//[$'\t\r\n ']}" ]; then
-              echo "Skipping empty verification body"
+          echo $VERIFS | jq -r '.[] + \u0000' | while IFS= read -r -d '' BODY; do
+            if [ -z ${BODY//[$'\t\r\n ']} ]; then
+              echo Skipping empty verification body
               continue
             fi
 
-            RESP=$(curl -sS -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/${OWNER}/${REPO}/issues/${PR}/comments" \
-              -d "$(jq -nc --arg b "$BODY" '{body:$b}')")
+            RESP=$(curl -sS -w %{http_code} -X POST \
+              -H Authorization: Bearer ${GH_TOKEN} \
+              -H Accept: application/vnd.github.v3+json \
+              https://api.github.com/repos/${OWNER}/${REPO}/issues/${PR}/comments \
+              -d $(jq -nc --arg b $BODY '{body:$b}'))
 
-            CODE="${RESP:(-3)}"
-            RBODY="${RESP%$CODE}"
+            CODE=${RESP:(-3)}
+            RBODY=${RESP%$CODE}
 
-            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
-              echo "❌ Failed to post verification comment (HTTP $CODE)"
-              echo "$RBODY"
+            if [[ $CODE -lt 200 || $CODE -ge 300 ]]; then
+              echo ❌ Failed to post verification comment (HTTP $CODE)
+              echo $RBODY
               exit 1
             fi
 
-            url=$(echo "$RBODY" | jq -r '.html_url // empty')
-            echo "✅ Posted verification review ${url:+→ $url}"
+            url=$(echo $RBODY | jq -r '.html_url // empty')
+            echo ✅ Posted verification review ${url:+→ $url}
           done
 
-          echo "✅ Done posting verification reviews."
+          echo ✅ Done posting verification reviews.
 
       # Step 18b: Clean up response artifacts
       - name: Remove response payload
@@ -697,14 +703,14 @@ jobs:
         id: alert
         run: |
           set -euo pipefail
-          gather="${GATHER_RESULT:-unknown}"
-          receive="${RECEIVE_RESULT:-skipped}"
-          if [[ "$gather" == "failure" || "$receive" == "failure" ]]; then
-            echo "alert=true" >> "$GITHUB_OUTPUT"
-            echo "Failure detected (gather=$gather, receive=$receive)."
+          gather=${GATHER_RESULT:-unknown}
+          receive=${RECEIVE_RESULT:-skipped}
+          if [[ $gather == failure || $receive == failure ]]; then
+            echo alert=true >> $GITHUB_OUTPUT
+            echo Failure detected (gather=$gather, receive=$receive).
           else
-            echo "alert=false" >> "$GITHUB_OUTPUT"
-            echo "No downstream alert required (gather=$gather, receive=$receive)."
+            echo alert=false >> $GITHUB_OUTPUT
+            echo No downstream alert required (gather=$gather, receive=$receive).
           fi
 
       - name: Send failure webhook
@@ -712,28 +718,28 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -z "${ERROR_WEBHOOK_URL:-}" ]]; then
-            echo "Webhook URL secret not configured; skipping alert dispatch."
+          if [[ -z ${ERROR_WEBHOOK_URL:-} ]]; then
+            echo Webhook URL secret not configured; skipping alert dispatch.
             exit 0
           fi
 
-          gather="${GATHER_RESULT:-unknown}"
-          receive="${RECEIVE_RESULT:-skipped}"
-          pr="${PR_NUMBER:-unknown}"
-          repo="${REPOSITORY:-${{ github.repository }}}"
+          gather=${GATHER_RESULT:-unknown}
+          receive=${RECEIVE_RESULT:-skipped}
+          pr=${PR_NUMBER:-unknown}
+          repo=${REPOSITORY:-${{ github.repository }}}
           payload=$(jq -n \
-            --arg repo "$repo" \
-            --arg pr "$pr" \
-            --arg gather_status "$gather" \
-            --arg receive_status "$receive" \
-            --arg run_url "$RUN_URL" \
-            --arg workflow "$WORKFLOW_NAME" \
-            --arg run_id "$RUN_ID" \
-            --arg run_attempt "$RUN_ATTEMPT" \
-            --arg actor "$ACTOR" \
+            --arg repo $repo \
+            --arg pr $pr \
+            --arg gather_status $gather \
+            --arg receive_status $receive \
+            --arg run_url $RUN_URL \
+            --arg workflow $WORKFLOW_NAME \
+            --arg run_id $RUN_ID \
+            --arg run_attempt $RUN_ATTEMPT \
+            --arg actor $ACTOR \
             '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}' )
 
           curl -sS -X POST \
-            -H "Content-Type: application/json" \
-            --data "$payload" \
-            "$ERROR_WEBHOOK_URL"
+            -H Content-Type: application/json \
+            --data $payload \
+            $ERROR_WEBHOOK_URL
