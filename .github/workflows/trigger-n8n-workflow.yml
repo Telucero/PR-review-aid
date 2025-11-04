@@ -223,7 +223,7 @@ jobs:
               out_lines.extend(current_chunk)
 
           diff_path.write_text(''.join(out_lines), encoding='utf-8')
-          PY
+        PY
 
       # Step 8: Compress & encode diff for payload
       - name: Compress filtered diff
