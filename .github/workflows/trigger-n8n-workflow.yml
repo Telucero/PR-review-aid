@@ -130,21 +130,19 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER} \
             > pr.diff
 
-      # Step 6: Remove .ai and llms files from metadata
       - name: Filter excluded files
         id: filter_files
+        shell: bash
         run: |
           set -euo pipefail
 
           python3 - <<'PY'
           from pathlib import Path
-          import json
-          import re
-          import sys
+          import json, re, sys
 
           files_path = Path("files.json")
           try:
-              raw = files_path.read_text()
+              raw = files_path.read_text(encoding="utf-8")
           except FileNotFoundError:
               print("files.json not found", file=sys.stderr)
               sys.exit(1)
@@ -161,8 +159,9 @@ jobs:
               print(raw)
               data = []
 
+          # Exclude paths under ".ai" directory (any depth) or any filename containing "llms"
           pattern_ai_dir = re.compile(r'(^|/)\.ai(/|$)', re.IGNORECASE)
-          pattern_llms = re.compile(r'llms', re.IGNORECASE)
+          pattern_llms   = re.compile(r'llms', re.IGNORECASE)
 
           filtered = []
           for item in data:
@@ -176,13 +175,14 @@ jobs:
                   continue
               filtered.append(item)
 
-          files_path.write_text(json.dumps(filtered))
-          Path("file_count.txt").write_text(str(len(filtered)))
-                    PY
-
-                    FILE_COUNT=$(cat file_count.txt)
-                    echo file_count=${FILE_COUNT} >> $GITHUB_OUTPUT
-                    echo Remaining files after filter: ${FILE_COUNT}
+          files_path.write_text(json.dumps(filtered), encoding="utf-8")
+          Path("file_count.txt").write_text(str(len(filtered)), encoding="utf-8")
+          PY
+              FILE_COUNT=$(<file_count.txt)
+              {
+                echo "file_count=${FILE_COUNT}"
+              } >> "$GITHUB_OUTPUT"
+              echo "Remaining files after filter: ${FILE_COUNT}"
 
       # Step 7: Strip excluded paths from diff payload
       - name: Filter diff to excluded paths
