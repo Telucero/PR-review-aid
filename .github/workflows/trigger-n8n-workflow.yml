@@ -273,7 +273,7 @@ jobs:
         run: |
           echo ℹ️ Diff char count (${{ steps.diff_threshold.outputs.diff_char_count }}) is below threshold (${{ steps.diff_threshold.outputs.threshold }}). Skipping n8n send.
 
-      # Step 10: Send consolidated payload to n8n
+      # Step 10: Send consolidated payload to n8n (no heredocs)
       - name: Combine and send to n8n webhook
         id: send_payload
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
@@ -293,15 +293,9 @@ jobs:
             echo "error=false"
           } >> "$GITHUB_OUTPUT"
 
-          # Optional host allowlist guard
+          # Optional host allowlist guard (no heredoc; Python -c one-liner)
           if [[ -n "${N8N_ALLOWED_HOST:-}" ]]; then
-            HOST="$(python3 - <<'PY'
-from urllib.parse import urlparse
-import os
-url = os.environ.get('N8N_WEBHOOK_URL', '')
-print(urlparse(url).hostname or '')
-PY
-)"
+            HOST="$(python3 -c 'from urllib.parse import urlparse; import sys; print((urlparse(sys.argv[1]).hostname) or "")' "$N8N_WEBHOOK_URL")"
             if [[ -z "$HOST" || "$HOST" != "$N8N_ALLOWED_HOST" ]]; then
               echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
               echo "error=true" >> "$GITHUB_OUTPUT"
@@ -309,45 +303,8 @@ PY
             fi
           fi
 
-          # Build payload.json
-          python3 - <<'PY'
-from pathlib import Path
-import json, os, sys
-
-root = Path('.')
-
-def read_json(filename):
-    p = root / filename
-    try:
-        return json.loads(p.read_text(encoding='utf-8'))
-    except FileNotFoundError:
-        print(f"{filename} not found", file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError as exc:
-        print(f"Unable to parse {filename}: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-pr = read_json('pr.json')
-files = read_json('files.json')
-commits = read_json('commits.json')
-
-diff_path = root / 'diff.b64'
-try:
-    diff_base64 = diff_path.read_text(encoding='utf-8').replace('\n', '')
-except FileNotFoundError:
-    print('diff.b64 not found', file=sys.stderr)
-    sys.exit(1)
-
-payload = {
-    'pr': pr,
-    'files': files,
-    'commits': commits,
-    'diff_base64': diff_base64,
-    'token': os.environ.get('RUN_TOKEN', '')
-}
-
-(root / 'payload.json').write_text(json.dumps(payload, separators=(',', ':')), encoding='utf-8')
-PY
+          # Build payload.json via script
+          python3 .github/scripts/build_payload.py
 
           # Size guard (10 MB)
           PAYLOAD_SIZE=$(stat -c%s payload.json)
@@ -374,14 +331,14 @@ PY
           echo "n8n responded with status: $HTTP_STATUS"
           printf '%s' "$HTTP_BODY" > response_body.json
 
-          # Check HTTP status
+          # Check HTTP status first
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Parse / validate response
+          # Parse/validate response
           STATUS="$(jq -r '.status // empty' response_body.json)"
           MATCHED="$(jq -r '.token // empty' response_body.json)"
 
@@ -416,34 +373,8 @@ PY
             fi
           fi
 
-          # Sanitize and expose compact base64 of response (no secrets)
-          RESPONSE_PAYLOAD="$(python3 - <<'PY'
-from pathlib import Path
-import base64, json, sys
-
-p = Path('response_body.json')
-try:
-    data = json.loads(p.read_text(encoding='utf-8') or 'null')
-except json.JSONDecodeError as exc:
-    print(f"Unable to parse response_body.json for sanitization: {exc}", file=sys.stderr)
-    sys.exit(0)
-
-def sanitize(o):
-    if isinstance(o, dict):
-        o.pop('receiving_token', None)
-        o.pop('token', None)
-        o.pop('n8n_sending_token', None)
-        for v in o.values():
-            sanitize(v)
-    elif isinstance(o, list):
-        for i in o:
-            sanitize(i)
-
-sanitize(data)
-serialized = json.dumps(data, separators=(',', ':')).encode('utf-8')
-print(base64.b64encode(serialized).decode('utf-8'))
-PY
-)"
+          # Sanitize → base64 (no secrets), via script
+          RESPONSE_PAYLOAD="$(python3 .github/scripts/sanitize_response.py)"
           echo "response_payload=${RESPONSE_PAYLOAD}" >> "$GITHUB_OUTPUT"
           rm -f response_body.json || true
 
