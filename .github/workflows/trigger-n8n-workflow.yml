@@ -240,29 +240,32 @@ jobs:
           echo Commits metadata size: $(stat -c%s commits.json) bytes
           echo Compressed diff size: $(stat -c%s pr.diff.gz) bytes
 
-      # Step 9b: Evaluate diff length against threshold
       - name: Evaluate diff char threshold
         id: diff_threshold
+        shell: bash
         run: |
           set -euo pipefail
 
           THRESHOLD=${MIN_DIFF_CHAR_THRESHOLD}
           if [[ ! $THRESHOLD =~ ^[0-9]+$ ]]; then
-            echo Invalid MIN_DIFF_CHAR_THRESHOLD='$THRESHOLD'; defaulting to 0
+            echo "Invalid MIN_DIFF_CHAR_THRESHOLD='$THRESHOLD'; defaulting to 0"
             THRESHOLD=0
           fi
 
           CHAR_COUNT=$(wc -c < pr.diff | tr -d '[:space:]')
-          echo diff_char_count=${CHAR_COUNT} >> $GITHUB_OUTPUT
-          echo threshold=${THRESHOLD} >> $GITHUB_OUTPUT
+          {
+            echo "diff_char_count=${CHAR_COUNT}"
+            echo "threshold=${THRESHOLD}"
+          } >> "$GITHUB_OUTPUT"
 
           if (( CHAR_COUNT < THRESHOLD )); then
-            echo skip_send=true >> $GITHUB_OUTPUT
-            echo Filtered diff char count ${CHAR_COUNT} is below threshold ${THRESHOLD}; skipping downstream send.
+            echo "skip_send=true" >> "$GITHUB_OUTPUT"
+            echo "Filtered diff char count ${CHAR_COUNT} is below threshold ${THRESHOLD}; skipping downstream send."
           else
-            echo skip_send=false >> $GITHUB_OUTPUT
-            echo Filtered diff char count ${CHAR_COUNT} meets threshold ${THRESHOLD}; continuing.
+            echo "skip_send=false" >> "$GITHUB_OUTPUT"
+            echo "Filtered diff char count ${CHAR_COUNT} meets threshold ${THRESHOLD}; continuing."
           fi
+
 
       # Step 9c: Short-circuit when below threshold
       - name: Diff below threshold
