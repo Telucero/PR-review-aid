@@ -273,14 +273,19 @@ jobs:
         run: |
           echo ℹ️ Diff char count (${{ steps.diff_threshold.outputs.diff_char_count }}) is below threshold (${{ steps.diff_threshold.outputs.threshold }}). Skipping n8n send.
 
-      # Step 10: Send consolidated payload to n8n (no heredocs)
-      - name: Combine and send to n8n webhook
+      - name: Generate Run UUID
+        id: run_uuid
+        shell: bash
+        run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
+        
+      - name: Combine and send to n8n webhook (HMAC only, no auth header)
         id: send_payload
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          # Reused as HMAC secret ONLY (not sent in any header directly)
           N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN }}
-          RUN_TOKEN: ${{ steps.uuid.outputs.run_token }}
+          RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}   # UUID, not GITHUB_TOKEN
           N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
           N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || '' }}
         shell: bash
@@ -293,90 +298,115 @@ jobs:
             echo "error=false"
           } >> "$GITHUB_OUTPUT"
 
-          # Optional host allowlist guard (no heredoc; Python -c one-liner)
-          if [[ -n "${N8N_ALLOWED_HOST:-}" ]]; then
-            HOST="$(python3 -c 'from urllib.parse import urlparse; import sys; print((urlparse(sys.argv[1]).hostname) or "")' "$N8N_WEBHOOK_URL")"
-            if [[ -z "$HOST" || "$HOST" != "$N8N_ALLOWED_HOST" ]]; then
-              echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          # 1) Validate URL & host
+          HOST="$(python3 -c 'from urllib.parse import urlparse; import sys; u=urlparse(sys.argv[1]); print(u.hostname or "")' "$N8N_WEBHOOK_URL")"
+          SCHEME="$(python3 -c 'from urllib.parse import urlparse; import sys; u=urlparse(sys.argv[1]); print(u.scheme or "")' "$N8N_WEBHOOK_URL")"
+          if [[ -z "$HOST" || "$SCHEME" != "https" ]]; then
+            echo "Invalid or non-https N8N_WEBHOOK_URL."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -n "${N8N_ALLOWED_HOST:-}" && "$HOST" != "$N8N_ALLOWED_HOST" ]]; then
+            echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          # Build payload.json via script
-          python3 .github/scripts/build_payload.py
+          # 2) Inputs check
+          for f in pr.json files.json commits.json diff.b64; do
+            [[ -f "$f" ]] || { echo "$f missing"; echo "error=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          done
 
-          # Size guard (10 MB)
+          # 3) Build payload.json (no secrets)
+          DIFF_BASE64="$(tr -d '\n' < diff.b64)"
+          if [[ -z "$DIFF_BASE64" ]]; then
+            echo "diff.b64 is empty"
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          jq -n \
+            --slurpfile pr pr.json \
+            --slurpfile files files.json \
+            --slurpfile commits commits.json \
+            --arg diff_base64 "$DIFF_BASE64" \
+            '{pr: $pr[0], files: $files[0], commits: $commits[0], diff_base64: $diff_base64}' \
+            > payload.json
+
+          # 4) Size guard
           PAYLOAD_SIZE=$(stat -c%s payload.json)
           MAX_BYTES=$((10*1024*1024))
           if (( PAYLOAD_SIZE > MAX_BYTES )); then
             echo "Payload too large (${PAYLOAD_SIZE} bytes)."
             echo "error=true" >> "$GITHUB_OUTPUT"
+            rm -f payload.json || true
             exit 0
           fi
 
-          # Send to n8n
+          # 5) Compute HMAC over payload.json using N8N_SENDING_TOKEN (base64)
+          if ! command -v openssl >/dev/null 2>&1; then
+            echo "openssl not available for HMAC signing."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            rm -f payload.json || true
+            exit 0
+          fi
+          SIG="$(openssl dgst -sha256 -hmac "$N8N_SENDING_TOKEN" -binary < payload.json | base64 | tr -d '\n')"
+
+          # 6) Send (NO Authorization header)
           RESPONSE="$(curl -sS -w $'\n%{http_code}' -X POST \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $N8N_SENDING_TOKEN" \
             -H "X-Run-Token: $RUN_TOKEN" \
+            -H "X-Signature: sha256=${SIG}" \
             --data-binary @payload.json \
-            "$N8N_WEBHOOK_URL")"
+            "$N8N_WEBHOOK_URL")" || {
+              echo "Request failed."
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              rm -f payload.json || true
+              exit 0
+            }
 
+          # Remove payload quickly
           rm -f payload.json || true
 
           HTTP_BODY="$(printf '%s\n' "$RESPONSE" | sed '$d')"
           HTTP_STATUS="$(printf '%s\n' "$RESPONSE" | tail -n1)"
-
+          echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
           echo "n8n responded with status: $HTTP_STATUS"
-          printf '%s' "$HTTP_BODY" > response_body.json
 
-          # Check HTTP status first
+          # 7) HTTP status first
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Parse/validate response
-          STATUS="$(jq -r '.status // empty' response_body.json)"
-          MATCHED="$(jq -r '.token // empty' response_body.json)"
+          # 8) Minimal parse; do not log body
+          STATUS="$(jq -r '.status // empty' <<< "$HTTP_BODY")"
+          MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY")"
+
+          if [[ -n "${N8N_RECEIVING_TOKEN:-}" ]]; then
+            RECEIVED_TOKEN="$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' <<< "$HTTP_BODY")"
+            if [[ -z "$RECEIVED_TOKEN" || "$RECEIVED_TOKEN" != "$N8N_RECEIVING_TOKEN" ]]; then
+              echo "Receiving token missing or mismatch."
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
 
           if [[ "$STATUS" == "cancelled" ]]; then
             echo "n8n workflow reported cancellation; skipping downstream processing."
             echo "cancelled=true" >> "$GITHUB_OUTPUT"
-            rm -f response_body.json || true
             exit 0
           fi
 
+          # RUN_TOKEN only in header; n8n should echo it back in .token
           if [[ -z "$MATCHED" || "$MATCHED" != "$RUN_TOKEN" || "$STATUS" != "completed" ]]; then
             echo "n8n workflow failed or token mismatch (status='$STATUS')."
             echo "error=true" >> "$GITHUB_OUTPUT"
-            rm -f response_body.json || true
             exit 0
           fi
 
-          # Optional receiving-token verification
-          if [[ -n "${N8N_RECEIVING_TOKEN:-}" ]]; then
-            RECEIVED_TOKEN="$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' response_body.json)"
-            if [[ -z "$RECEIVED_TOKEN" ]]; then
-              echo "n8n response missing receiving_token field."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              rm -f response_body.json || true
-              exit 0
-            fi
-            if [[ "$RECEIVED_TOKEN" != "$N8N_RECEIVING_TOKEN" ]]; then
-              echo "Receiving token mismatch."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              rm -f response_body.json || true
-              exit 0
-            fi
-          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
 
-          # Sanitize → base64 (no secrets), via script
-          RESPONSE_PAYLOAD="$(python3 .github/scripts/sanitize_response.py)"
-          echo "response_payload=${RESPONSE_PAYLOAD}" >> "$GITHUB_OUTPUT"
-          rm -f response_body.json || true
 
 
       - name: Enforce n8n send failure
