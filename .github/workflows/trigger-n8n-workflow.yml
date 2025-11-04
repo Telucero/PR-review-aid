@@ -313,9 +313,9 @@ jobs:
 
           diff_path = root / 'diff.b64'
           try:
-              diff_base64 = diff_path.read_text().replace('\\n', '')
+            diff_base64 = diff_path.read_text().replace('\\n', '')
           except FileNotFoundError:
-              raise SystemExit('diff.b64 not found')
+            raise SystemExit('diff.b64 not found')
 
           payload = {
                 'pr': pr,
