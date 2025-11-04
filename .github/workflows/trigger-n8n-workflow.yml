@@ -225,21 +225,11 @@ jobs:
           diff_path.write_text("".join(out_lines), encoding="utf-8")
           PY
 
-      # Step 8: Compress & mask diff for payload
+      # Step 8: Compress & encode diff for payload
       - name: Compress filtered diff
         run: |
           gzip -c pr.diff > pr.diff.gz
           base64 -w 0 pr.diff.gz > diff.b64
-          python3 - <<'PY'
-          from pathlib import Path
-
-          chunk_size = 8000
-          diff_contents = Path("diff.b64").read_text()
-          for start in range(0, len(diff_contents), chunk_size):
-              chunk = diff_contents[start:start + chunk_size]
-              if chunk:
-                  print(f"::add-mask::{chunk}")
-          PY
 
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
@@ -287,12 +277,31 @@ jobs:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
           N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN }}
           RUN_TOKEN: ${{ steps.uuid.outputs.run_token }}
+          N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
+          N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || '' }}
         run: |
           set -euo pipefail
 
           echo "cancelled=false" >> "$GITHUB_OUTPUT"
           echo "executed=true" >> "$GITHUB_OUTPUT"
           echo "error=false" >> "$GITHUB_OUTPUT"
+
+          if [ -n "${N8N_ALLOWED_HOST:-}" ]; then
+            HOST=$(python3 - <<'PY'
+import os
+from urllib.parse import urlparse
+
+url = os.environ.get("N8N_WEBHOOK_URL", "")
+parsed = urlparse(url)
+print(parsed.hostname or "")
+PY
+)
+            if [ -z "$HOST" ] || [ "$HOST" != "$N8N_ALLOWED_HOST" ]; then
+              echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
 
           python3 - <<'PY'
           import json
@@ -325,14 +334,11 @@ jobs:
               "files": files,
               "commits": commits,
               "diff_base64": diff_base64,
-              "token": os.environ.get("RUN_TOKEN", ""),
-              "n8n_sending_token": os.environ.get("N8N_SENDING_TOKEN", "")
+              "token": os.environ.get("RUN_TOKEN", "")
           }
 
           (root / "payload.json").write_text(json.dumps(payload))
           PY
-
-          echo "::add-mask::$N8N_SENDING_TOKEN"
 
           PAYLOAD_SIZE=$(stat -c%s payload.json)
           MAX_BYTES=$((10*1024*1024))
@@ -344,8 +350,12 @@ jobs:
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $N8N_SENDING_TOKEN" \
+            -H "X-Run-Token: $RUN_TOKEN" \
             --data-binary @payload.json \
             "$N8N_WEBHOOK_URL")
+
+          rm -f payload.json || true
 
           HTTP_BODY=$(echo "$RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
@@ -371,6 +381,45 @@ jobs:
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          if [ -n "${N8N_RECEIVING_TOKEN:-}" ]; then
+            RECEIVED_TOKEN=$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' response_body.json)
+            if [ -z "$RECEIVED_TOKEN" ]; then
+              echo "n8n response missing receiving_token field."
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$RECEIVED_TOKEN" != "$N8N_RECEIVING_TOKEN" ]; then
+              echo "Receiving token mismatch."
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("response_body.json")
+          try:
+              data = json.loads(path.read_text() or "null")
+          except json.JSONDecodeError as exc:
+              raise SystemExit(f"Unable to parse response_body.json for sanitization: {exc}")
+
+          def strip_handshake(container):
+              if isinstance(container, dict):
+                  container.pop("receiving_token", None)
+                  container.pop("token", None)
+                  container.pop("n8n_sending_token", None)
+
+          if isinstance(data, list):
+              for item in data:
+                  strip_handshake(item)
+          else:
+              strip_handshake(data)
+
+          path.write_text(json.dumps(data))
+          PY
 
       - name: Capture response payload
         id: capture_payload
@@ -416,22 +465,6 @@ jobs:
             exit 1
           fi
           printf '%s' "$payload" | base64 -d > response_body.json
-
-      # Step 15: Confirm handshake token
-      - name: Validate receiving token
-        env:
-          EXPECTED_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
-        run: |
-          RECEIVED_TOKEN=$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' response_body.json)
-          if [ -z "$RECEIVED_TOKEN" ]; then
-            echo "No receiving_token provided by n8n"
-            exit 1
-          fi
-          if [ "$RECEIVED_TOKEN" != "$EXPECTED_TOKEN" ]; then
-            echo "Receiving token mismatch"
-            exit 1
-          fi
-          echo "✅ Receiving token validated successfully"
 
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
@@ -662,7 +695,7 @@ jobs:
     needs:
       - gather-and-send
       - receive-validate-and-comment
-    if: ${{ always() && (needs.gather-and-send.result == 'failure' || needs.receive-validate-and-comment.result == 'failure') && needs.gather-and-send.outputs.send_executed != 'true' }}
+    if: ${{ always() && ((needs.gather-and-send.result == 'failure' && (needs.gather-and-send.outputs.send_executed != 'true' || needs.gather-and-send.outputs.send_error == 'true')) || needs.receive-validate-and-comment.result == 'failure') }}
     env:
       GATHER_RESULT: ${{ needs.gather-and-send.result }}
       RECEIVE_RESULT: ${{ needs.receive-validate-and-comment.result }}
@@ -672,7 +705,7 @@ jobs:
       WORKFLOW_NAME: ${{ github.workflow }}
       RUN_ID: ${{ github.run_id }}
       RUN_ATTEMPT: ${{ github.run_attempt }}
-      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      ERROR_WEBHOOK_URL: ${{ secrets.ERROR_WEBHOOK_URL }}
       ACTOR: ${{ github.actor }}
       SEND_EXECUTED: ${{ needs.gather-and-send.outputs.send_executed }}
       SEND_ERROR: ${{ needs.gather-and-send.outputs.send_error }}
@@ -696,7 +729,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -z "${WEBHOOK_URL:-}" ]]; then
+          if [[ -z "${ERROR_WEBHOOK_URL:-}" ]]; then
             echo "Webhook URL secret not configured; skipping alert dispatch."
             exit 0
           fi
@@ -720,4 +753,4 @@ jobs:
           curl -sS -X POST \
             -H "Content-Type: application/json" \
             --data "$payload" \
-            "$WEBHOOK_URL"
+            "$ERROR_WEBHOOK_URL"
