@@ -307,17 +307,17 @@ jobs:
               except json.JSONDecodeError as exc:
                   raise SystemExit(f'Unable to parse {filename}: {exc}')
 
-            pr = read_json('pr.json')
-            files = read_json('files.json')
-            commits = read_json('commits.json')
+          pr = read_json('pr.json')
+          files = read_json('files.json')
+          commits = read_json('commits.json')
 
-            diff_path = root / 'diff.b64'
-            try:
-                diff_base64 = diff_path.read_text().replace('\\n', '')
-            except FileNotFoundError:
-                raise SystemExit('diff.b64 not found')
+          diff_path = root / 'diff.b64'
+          try:
+              diff_base64 = diff_path.read_text().replace('\\n', '')
+          except FileNotFoundError:
+              raise SystemExit('diff.b64 not found')
 
-            payload = {
+          payload = {
                 'pr': pr,
                 'files': files,
                 'commits': commits,
@@ -325,7 +325,7 @@ jobs:
                 'token': os.environ.get('RUN_TOKEN', '')
             }
 
-            (root / 'payload.json').write_text(json.dumps(payload))
+          (root / 'payload.json').write_text(json.dumps(payload))
             ''' ))"
 
                       PAYLOAD_SIZE=$(stat -c%s payload.json)
