@@ -188,7 +188,7 @@ jobs:
       - name: Filter diff to excluded paths
         run: |
           python3 - <<'PY'
-          import pathlib, textwrap; exec(textwrap.dedent('''\
+          import pathlib, textwrap; exec(textwrap.dedent(\
           from pathlib import Path
 
           diff_path = Path('pr.diff')
