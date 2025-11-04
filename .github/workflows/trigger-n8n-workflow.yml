@@ -21,6 +21,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request != null && github.event.pull_request.head.repo.fork == false) }}
     runs-on: ubuntu-latest
     environment: n8n-sending
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       filtered_file_count: ${{ steps.filter_files.outputs.file_count }}
       should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
@@ -28,7 +31,7 @@ jobs:
       pr_number: ${{ steps.run_context.outputs.pr_number }}
       repository: ${{ steps.run_context.outputs.repository }}
       run_url: ${{ steps.run_context.outputs.run_url }}
-      response_payload: ${{ steps.capture_payload.outputs.payload }}
+      response_payload: ${{ steps.send_payload.outputs.response_payload }}
       cancelled: ${{ steps.send_payload.outputs.cancelled }}
       send_executed: ${{ steps.send_payload.outputs.executed }}
       send_error: ${{ steps.send_payload.outputs.error }}
@@ -288,14 +291,14 @@ jobs:
 
           if [ -n "${N8N_ALLOWED_HOST:-}" ]; then
             HOST=$(python3 - <<'PY'
-import os
-from urllib.parse import urlparse
+              import os
+              from urllib.parse import urlparse
 
-url = os.environ.get("N8N_WEBHOOK_URL", "")
-parsed = urlparse(url)
-print(parsed.hostname or "")
-PY
-)
+              url = os.environ.get("N8N_WEBHOOK_URL", "")
+              parsed = urlparse(url)
+              print(parsed.hostname or "")
+            PY
+            )
             if [ -z "$HOST" ] || [ "$HOST" != "$N8N_ALLOWED_HOST" ]; then
               echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
               echo "error=true" >> "$GITHUB_OUTPUT"
@@ -361,7 +364,7 @@ PY
           HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
 
           echo "n8n responded with status: $HTTP_STATUS"
-          echo "$HTTP_BODY" > response_body.json
+          printf %s "$HTTP_BODY" > response_body.json
 
           STATUS=$(jq -r ".status" response_body.json)
           MATCHED=$(jq -r ".token" response_body.json)
@@ -397,42 +400,33 @@ PY
           fi
 
           python3 - <<'PY'
-          import json
-          from pathlib import Path
+            import json
+            from pathlib import Path
 
-          path = Path("response_body.json")
-          try:
+            path = Path("response_body.json")
+            try:
               data = json.loads(path.read_text() or "null")
-          except json.JSONDecodeError as exc:
+            except json.JSONDecodeError as exc:
               raise SystemExit(f"Unable to parse response_body.json for sanitization: {exc}")
 
-          def strip_handshake(container):
-              if isinstance(container, dict):
-                  container.pop("receiving_token", None)
-                  container.pop("token", None)
-                  container.pop("n8n_sending_token", None)
+            def sanitize(obj):
+              if isinstance(obj, dict):
+                obj.pop("receiving_token", None)
+                obj.pop("token", None)
+                obj.pop("n8n_sending_token", None)
+                for value in obj.values():
+                  sanitize(value)
+              elif isinstance(obj, list):
+                for item in obj:
+                  sanitize(item)
 
-          if isinstance(data, list):
-              for item in data:
-                  strip_handshake(item)
-          else:
-              strip_handshake(data)
-
-          path.write_text(json.dumps(data))
+            sanitize(data)
+            path.write_text(json.dumps(data))
           PY
 
-      - name: Capture response payload
-        id: capture_payload
-        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
-        run: |
-          set -euo pipefail
-          if [ ! -s response_body.json ]; then
-            echo "payload=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          base64 -w0 response_body.json > response_body.b64
-          echo "payload=$(cat response_body.b64)" >> "$GITHUB_OUTPUT"
-          rm -f response_body.b64
+          RESPONSE_PAYLOAD=$(base64 -w0 response_body.json)
+          echo "response_payload=$RESPONSE_PAYLOAD" >> "$GITHUB_OUTPUT"
+          rm -f response_body.json
 
       - name: Enforce n8n send failure
         if: ${{ steps.send_payload.outputs.error == 'true' }}
@@ -447,9 +441,13 @@ PY
 
   receive-validate-and-comment:
     runs-on: ubuntu-latest
-    needs: gather-and-send
+    needs:
+      - gather-and-send
     if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.filtered_file_count != '0' && needs.gather-and-send.outputs.should_send == 'true' }}
     environment: n8n-receiving
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       # Step 13: Re-checkout repo (fresh workspace)
       - name: Checkout repository
@@ -461,7 +459,7 @@ PY
           set -euo pipefail
           payload='${{ needs.gather-and-send.outputs.response_payload }}'
           if [ -z "$payload" ]; then
-            echo "No response payload found; exiting."
+            echo "Response payload missing; exiting."
             exit 1
           fi
           printf '%s' "$payload" | base64 -d > response_body.json
@@ -547,7 +545,6 @@ PY
           STATUS=$(jq -r '.status // empty' review_batches.json)
           if [ "$STATUS" != "completed" ]; then
             echo "n8n output not completed (status='$STATUS')"
-            jq . response_body.json || true
             exit 1
           fi
 
@@ -556,7 +553,6 @@ PY
           PR=$(jq -r '.pr // empty' review_batches.json)
           if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
             echo "Missing repo context."
-            jq . response_body.json || true
             exit 1
           fi
 
@@ -695,6 +691,9 @@ PY
     needs:
       - gather-and-send
       - receive-validate-and-comment
+    permissions:
+      contents: read
+      pull-requests: read
     if: ${{ always() && ((needs.gather-and-send.result == 'failure' && (needs.gather-and-send.outputs.send_executed != 'true' || needs.gather-and-send.outputs.send_error == 'true')) || needs.receive-validate-and-comment.result == 'failure') }}
     env:
       GATHER_RESULT: ${{ needs.gather-and-send.result }}
