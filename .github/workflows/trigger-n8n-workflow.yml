@@ -278,7 +278,7 @@ jobs:
         shell: bash
         run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
         
-      - name: Combine and send to n8n webhook (HMAC only, no auth header)
+      - name: Combine and send to n8n webhook 
         id: send_payload
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
         env:
@@ -528,7 +528,7 @@ jobs:
             batches = []
             for start in range(0, total, chunk_size):
                 chunk = comments[start:start + chunk_size]
-                summary = f\Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})\
+                summary = f"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})"
                 chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
                 batch = {'body': summary, 'comments': chunk}
                 if len(chunk_commit_ids) == 1:
