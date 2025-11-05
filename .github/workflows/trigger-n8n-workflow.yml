@@ -379,6 +379,16 @@ jobs:
           # 7) HTTP status first
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
+            echo "Response headers (debug):"
+            cat "$HEADER_FILE"
+            echo "Response body preview (first 1000 chars):"
+            python3 - <<'PY' "$HTTP_BODY"
+import sys
+body = sys.argv[1]
+preview = body[:1000]
+safe = ''.join(ch if ch.isprintable() or ch in '\n\r\t' else '?' for ch in preview)
+print(safe)
+PY
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
