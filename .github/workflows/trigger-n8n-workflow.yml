@@ -352,7 +352,10 @@ jobs:
           SIG="$(openssl dgst -sha256 -hmac "$N8N_SENDING_TOKEN" -binary < payload.json | base64 | tr -d '\n')"
 
           # 6) Send (NO Authorization header)
-          RESPONSE="$(curl -sS -w $'\n%{http_code}' -X POST \
+          HEADER_FILE=$(mktemp)
+          trap 'rm -f "$HEADER_FILE"' EXIT
+
+          RESPONSE="$(curl -sS -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
             -H "Content-Type: application/json" \
             -H "X-Run-Token: $RUN_TOKEN" \
             -H "X-Signature: sha256=${SIG}" \
@@ -361,6 +364,7 @@ jobs:
               echo "Request failed."
               echo "error=true" >> "$GITHUB_OUTPUT"
               rm -f payload.json || true
+              rm -f "$HEADER_FILE"
               exit 0
             }
 
@@ -384,11 +388,33 @@ jobs:
           MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY")"
 
           if [[ -n "${N8N_RECEIVING_TOKEN:-}" ]]; then
-            RECEIVED_TOKEN="$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' <<< "$HTTP_BODY")"
-            if [[ -z "$RECEIVED_TOKEN" || "$RECEIVED_TOKEN" != "$N8N_RECEIVING_TOKEN" ]]; then
-              echo "Receiving token missing or mismatch."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            HEADER_SIG="$(python3 - <<'PY' "$HEADER_FILE"
+          import sys
+          from pathlib import Path
+
+          header_path = Path(sys.argv[1])
+          sig = ""
+          for line in header_path.read_text().splitlines():
+              if line.lower().startswith("x-response-signature:"):
+                  sig = line.split(":", 1)[1].strip()
+                  break
+          print(sig, end="")
+          PY
+          )"
+            if [[ -n "$HEADER_SIG" ]]; then
+              EXPECTED_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+              if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
+                echo "Response signature mismatch."
+                echo "error=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            else
+              RECEIVED_TOKEN="$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' <<< "$HTTP_BODY")"
+              if [[ -z "$RECEIVED_TOKEN" || "$RECEIVED_TOKEN" != "$N8N_RECEIVING_TOKEN" ]]; then
+                echo "Receiving token missing or mismatch."
+                echo "error=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
             fi
           fi
 
@@ -406,7 +432,6 @@ jobs:
           fi
 
           echo "ok=true" >> "$GITHUB_OUTPUT"
-
 
 
       - name: Enforce n8n send failure
