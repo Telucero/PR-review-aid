@@ -431,6 +431,9 @@ jobs:
             exit 0
           fi
 
+          BODY_B64=$(printf '%s' "$HTTP_BODY" | base64 -w 0)
+          echo "response_payload=${BODY_B64}" >> "$GITHUB_OUTPUT"
+
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
 
