@@ -553,7 +553,7 @@ jobs:
                 'batches': batches
             }
             Path('review_batches.json').write_text(json.dumps(output, indent=2))
-            ''' ))
+            ''' )
 
       # Step 17: Post grouped inline suggestions
       - name: Post batched inline suggestions
