@@ -701,23 +701,28 @@ jobs:
               continue
             fi
 
-            RESP=$(curl -sS -w %{http_code} -X POST \
-              -H Authorization: Bearer ${GH_TOKEN} \
-              -H Accept: application/vnd.github.v3+json \
-              https://api.github.com/repos/${OWNER}/${REPO}/issues/${PR}/comments \
-              -d $(jq -nc --arg b $BODY '{body:$b}'))
+            JSON_PAYLOAD=$(jq -nc --arg b "$BODY" '{body:$b}')
+            RESP=$(curl -sS -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${OWNER}/${REPO}/issues/${PR}/comments" \
+              -d "$JSON_PAYLOAD")
 
             CODE=${RESP:(-3)}
             RBODY=${RESP%$CODE}
 
-            if [[ $CODE -lt 200 || $CODE -ge 300 ]]; then
-              echo ❌ Failed to post verification comment (HTTP $CODE)
-              echo $RBODY
+            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
+              echo "❌ Failed to post verification comment (HTTP $CODE)"
+              echo "$RBODY"
               exit 1
             fi
 
-            url=$(echo $RBODY | jq -r '.html_url // empty')
-            echo ✅ Posted verification review ${url:+→ $url}
+            url=$(printf '%s' "$RBODY" | jq -r '.html_url // empty')
+            if [ -n "$url" ]; then
+              echo "✅ Posted verification review → $url"
+            else
+              echo "✅ Posted verification review"
+            fi
           done
 
           echo ✅ Done posting verification reviews.
@@ -771,27 +776,28 @@ jobs:
           set -euo pipefail
 
           if [[ -z ${ERROR_WEBHOOK_URL:-} ]]; then
-            echo Webhook URL secret not configured; skipping alert dispatch.
+            echo "Webhook URL secret not configured; skipping alert dispatch."
             exit 0
           fi
 
-          gather=${GATHER_RESULT:-unknown}
-          receive=${RECEIVE_RESULT:-skipped}
-          pr=${PR_NUMBER:-unknown}
-          repo=${REPOSITORY:-${{ github.repository }}}
+          gather="${GATHER_RESULT:-unknown}"
+          receive="${RECEIVE_RESULT:-skipped}"
+          pr="${PR_NUMBER:-unknown}"
+          repo="${REPOSITORY:-${{ github.repository }}}"
+
           payload=$(jq -n \
-            --arg repo $repo \
-            --arg pr $pr \
-            --arg gather_status $gather \
-            --arg receive_status $receive \
-            --arg run_url $RUN_URL \
-            --arg workflow $WORKFLOW_NAME \
-            --arg run_id $RUN_ID \
-            --arg run_attempt $RUN_ATTEMPT \
-            --arg actor $ACTOR \
-            '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}' )
+            --arg repo "$repo" \
+            --arg pr "$pr" \
+            --arg gather_status "$gather" \
+            --arg receive_status "$receive" \
+            --arg run_url "$RUN_URL" \
+            --arg workflow "$WORKFLOW_NAME" \
+            --arg run_id "$RUN_ID" \
+            --arg run_attempt "$RUN_ATTEMPT" \
+            --arg actor "$ACTOR" \
+            '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}')
 
           curl -sS -X POST \
-            -H Content-Type: application/json \
-            --data $payload \
-            $ERROR_WEBHOOK_URL
+            -H "Content-Type: application/json" \
+            --data "$payload" \
+            "$ERROR_WEBHOOK_URL"
