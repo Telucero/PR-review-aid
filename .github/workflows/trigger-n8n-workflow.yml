@@ -490,11 +490,24 @@ jobs:
           from pathlib import Path
           import json
 
-          data = json.loads(Path('response_body.json').read_text() or 'null')
+          raw = Path('response_body.json').read_text() or 'null'
+          data = json.loads(raw)
           if isinstance(data, list):
               data = data[0] if data else {}
 
-          payloads = data.get('prepared_comment_payloads') or []
+          payload_entries = data.get('payload') or []
+          if isinstance(payload_entries, dict):
+              primary_payload = payload_entries
+          elif isinstance(payload_entries, list) and payload_entries:
+              primary_payload = payload_entries[0]
+          else:
+              primary_payload = {}
+
+          payloads = (
+              data.get('prepared_comment_payloads')
+              or primary_payload.get('prepared_comment_payloads')
+              or []
+          )
 
           def normalize(raw):
               path = raw.get('path') or raw.get('file_path')
@@ -544,11 +557,16 @@ jobs:
                   batch['commit_id'] = chunk_commit_ids.pop()
               batches.append(batch)
 
+          status = data.get('status') or primary_payload.get('status')
+          owner = data.get('repo_owner') or primary_payload.get('repo_owner')
+          repo = data.get('repo_name') or primary_payload.get('repo_name')
+          pr_number = data.get('pr_number') or primary_payload.get('pr_number')
+
           output = {
-              'status': data.get('status'),
-              'owner': data.get('repo_owner'),
-              'repo': data.get('repo_name'),
-              'pr': data.get('pr_number'),
+              'status': status,
+              'owner': owner,
+              'repo': repo,
+              'pr': pr_number,
               'batches': batches
           }
           Path('review_batches.json').write_text(json.dumps(output, indent=2))
