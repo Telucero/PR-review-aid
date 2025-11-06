@@ -17,8 +17,7 @@ jobs:
   gather-and-send:
     # Manual dispatch is allowed, but we verify the actor has write access before continuing.
     # Pull request runs still skip forks to avoid leaking secrets.
-    # Temporary: allow workflow to run for all PRs (including forks) while testing.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request != null }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request != null && github.event.pull_request.head.repo.fork == false) }}
     runs-on: ubuntu-latest
     environment: n8n-sending
     permissions:
@@ -287,7 +286,7 @@ jobs:
           N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN }}
           RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}   # UUID, not GITHUB_TOKEN
           N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
-          N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || '' }}
+          N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || 'n8n.papermoon.io' }}
         shell: bash
         run: |
           set -euo pipefail
