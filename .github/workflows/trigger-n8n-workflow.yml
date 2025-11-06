@@ -562,60 +562,65 @@ jobs:
           set -euo pipefail
 
           STATUS=$(jq -r '.status // empty' review_batches.json)
-          if [ $STATUS != completed ]; then
-            echo n8n output not completed (status='$STATUS')
+          if [ "$STATUS" != "completed" ]; then
+            echo "n8n output not completed (status='$STATUS')"
             exit 1
           fi
 
           OWNER=$(jq -r '.owner // empty' review_batches.json)
           REPO=$(jq -r '.repo // empty' review_batches.json)
           PR=$(jq -r '.pr // empty' review_batches.json)
-          if [ -z $OWNER ] || [ -z $REPO ] || [ -z $PR ]; then
-            echo Missing repo context.
+          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
+            echo "Missing repo context."
             exit 1
           fi
 
           BATCH_COUNT=$(jq '.batches | length' review_batches.json)
-          if [ $BATCH_COUNT -eq 0 ]; then
-            echo No suggestions returned; nothing to post.
+          if [ "$BATCH_COUNT" -eq 0 ]; then
+            echo "No suggestions returned; nothing to post."
             exit 0
           fi
 
-          echo Posting $BATCH_COUNT suggestion batch(es) to $OWNER/$REPO#${PR}
+          echo "Posting $BATCH_COUNT suggestion batch(es) to $OWNER/$REPO#$PR"
 
           for index in $(jq -r '.batches | keys[]' review_batches.json); do
-            BODY_SUMMARY=$(jq -r .batches[$index].body review_batches.json)
-            COMMENTS=$(jq .batches[$index].comments review_batches.json)
-            COMMIT_ID=$(jq -r .batches[$index].commit_id // empty review_batches.json)
-            if [ -n $COMMIT_ID ] && [ $COMMIT_ID != null ]; then
-              PAYLOAD=$(jq -n --arg body $BODY_SUMMARY --argjson comments $COMMENTS --arg commit $COMMIT_ID '{event:COMMENT, body:$body, comments:$comments, commit_id:$commit}')
+            BODY_SUMMARY=$(jq -r ".batches[$index].body" review_batches.json)
+            COMMENTS=$(jq ".batches[$index].comments" review_batches.json)
+            COMMIT_ID=$(jq -r ".batches[$index].commit_id // empty" review_batches.json)
+
+            if [ -n "$COMMIT_ID" ] && [ "$COMMIT_ID" != "null" ]; then
+              PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" --arg commit "$COMMIT_ID" '{event:"COMMENT", body:$body, comments:$comments, commit_id:$commit}')
             else
-              PAYLOAD=$(jq -n --arg body $BODY_SUMMARY --argjson comments $COMMENTS '{event:COMMENT, body:$body, comments:$comments}')
+              PAYLOAD=$(jq -n --arg body "$BODY_SUMMARY" --argjson comments "$COMMENTS" '{event:"COMMENT", body:$body, comments:$comments}')
             fi
 
-            RESP=$(curl -sS -w %{http_code} -X POST \
-              -H Authorization: Bearer ${GH_TOKEN} \
-              -H Accept: application/vnd.github.v3+json \
-              https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/reviews \
-              -d $PAYLOAD)
+            RESP=$(curl -sS -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${OWNER}/${REPO}/pulls/${PR}/reviews" \
+              -d "$PAYLOAD")
 
             CODE=${RESP:(-3)}
             BODY=${RESP%$CODE}
 
-            if [[ $CODE -lt 200 || $CODE -ge 300 ]]; then
-              echo ❌ Failed to post review batch (HTTP $CODE)
-              echo $BODY
+            if [[ "$CODE" -lt 200 || "$CODE" -ge 300 ]]; then
+              echo "❌ Failed to post review batch (HTTP $CODE)"
+              echo "$BODY"
               exit 1
             fi
 
-            URL=$(echo $BODY | jq -r '.html_url // empty')
-            echo ✅ Posted review batch ${index} ${URL:+→ $URL}
+            URL=$(echo "$BODY" | jq -r '.html_url // empty')
+            if [ -n "$URL" ]; then
+              echo "✅ Posted review batch ${index} → $URL"
+            else
+              echo "✅ Posted review batch ${index}"
+            fi
           done
 
-          echo —— Skipped upstream (for visibility) ——
+          echo "—— Skipped upstream (for visibility) ——"
           jq -r 'if type==array then .[0] else . end | .skipped_comments // [] | .[] | \(.file_path // -)#L\(.line_number // -): \(.reason // -)' response_body.json
 
-          echo ✅ Done. Suggestions posted.
+          echo "✅ Done. Suggestions posted."
 
       # Step 18: Publish any verification reviews
       - name: Post verification comments
