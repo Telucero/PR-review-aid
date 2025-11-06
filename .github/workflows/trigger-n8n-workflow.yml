@@ -650,7 +650,7 @@ jobs:
           RESPONSE_BODY=$(cat response_body.json)
 
           VERIFS=$(
-            echo $RESPONSE_BODY | jq -c '
+            printf '%s' "$RESPONSE_BODY" | jq -c '
               (if type==array then .[0] else . end) as $o
               | def to_arr(x):
                   if (x|type) == array then x
@@ -661,14 +661,14 @@ jobs:
               [
                 (to_arr($o.reviews) // []) as $r1
                   | ($r1 | map(select(((.type? | tostring | ascii_downcase) == verification)))
-                            | map(.formattedReview // .review // .body // .comment // .text // .content // )),
+                            | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
                 (to_arr($o.review) // []) as $r2
                   | ($r2 | map(select(((.type? | tostring | ascii_downcase) == verification)))
-                            | map(.formattedReview // .review // .body // .comment // .text // .content // )),
+                            | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
 
                 ($o | .. | objects
                   | select(((.type? | tostring | ascii_downcase) == verification))
-                  | (.formattedReview // .review // .body // .comment // .text // .content // ))
+                  | (.formattedReview // .review // .body // .comment // .text // .content // ""))
 
               ]
               | flatten
@@ -677,27 +677,27 @@ jobs:
             '
           )
 
-          COUNT=$(echo $VERIFS | jq 'length')
-          if [ $COUNT -eq 0 ]; then
-            echo No verification reviews found; skipping.
+          COUNT=$(printf '%s' "$VERIFS" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No verification reviews found; skipping."
             exit 0
           fi
 
-          OWNER=$(echo $RESPONSE_BODY | jq -r 'if type==array then .[0].repo_owner else .repo_owner end // empty')
-          REPO=$(echo $RESPONSE_BODY | jq -r 'if type==array then .[0].repo_name else .repo_name end // empty')
-          PR=$(echo $RESPONSE_BODY | jq -r 'if type==array then .[0].pr_number else .pr_number end // empty')
+          OWNER=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type==array then .[0].repo_owner else .repo_owner end // empty')
+          REPO=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type==array then .[0].repo_name else .repo_name end // empty')
+          PR=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type==array then .[0].pr_number else .pr_number end // empty')
 
-          if [ -z $OWNER ] || [ -z $REPO ] || [ -z $PR ]; then
-            echo Missing repo context; skipping verification comments.
+          if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
+            echo "Missing repo context; skipping verification comments."
             exit 0
           fi
 
-          echo Found $COUNT verification review(s). Preview:
-          echo $VERIFS | jq -r 'to_entries[] | \(.key):  + (.value | .[0:160] + (if length>160 then … else  end))'
+          echo "Found $COUNT verification review(s). Preview:"
+          printf '%s' "$VERIFS" | jq -r 'to_entries[] | "\(.key):  " + (.value | .[0:160] + (if length>160 then "..." else "" end))'
 
-          echo $VERIFS | jq -r '.[] + \u0000' | while IFS= read -r -d '' BODY; do
-            if [ -z ${BODY//[$'\t\r\n ']} ]; then
-              echo Skipping empty verification body
+          printf '%s' "$VERIFS" | jq -r '.[] + "\u0000"' | while IFS= read -r -d '' BODY; do
+            if [ -z "${BODY//[$'\t\r\n ']}" ]; then
+              echo "Skipping empty verification body"
               continue
             fi
 
