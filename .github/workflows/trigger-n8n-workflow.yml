@@ -12,6 +12,7 @@ on:
 
 permissions: {}
 
+
 jobs:
   gather-and-send:
     # Manual dispatch is allowed, but we verify the actor has write access before continuing.
@@ -42,12 +43,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Capture run context
+      # Step 2: Generate unique run token
+      - name: Generate Run UUID
+        id: uuid
+        run: echo run_token=$(uuidgen) >> $GITHUB_OUTPUT
+
       - name: Capture run context
         id: run_context
-        shell: bash
         run: |
-          set -euo pipefail
           echo pr_number=${PR_NUMBER} >> $GITHUB_OUTPUT
           echo repository=${GITHUB_REPOSITORY} >> $GITHUB_OUTPUT
           echo run_url=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} >> $GITHUB_OUTPUT
@@ -78,15 +81,13 @@ jobs:
 
       # Step 3: Pre-flight validation
       - name: Validate setup
-        shell: bash
         run: |
-          set -euo pipefail
           if [[ -z ${{ secrets.GITHUB_TOKEN }} ]]; then
             echo Missing GITHUB_TOKEN secret.
             exit 1
           fi
 
-          if [[ -z "${PR_NUMBER}" ]]; then
+          if [[ -z ${PR_NUMBER} ]]; then
             echo No PR number provided. For manual runs, supply pr_number input.
             exit 1
           fi
@@ -96,40 +97,32 @@ jobs:
             exit 1
           fi
 
-          if [[ "${IS_MANUAL_RUN}" == true ]]; then
+          if [[ ${IS_MANUAL_RUN} == true ]]; then
             echo ℹ️ Maintainer-triggered run for PR #${PR_NUMBER}
           fi
 
       # Step 4: Fetch PR metadata, files, commits
       - name: Fetch PR metadata
-        shell: bash
         run: |
-          set -euo pipefail
           gh api repos/${{ github.repository }}/pulls/${PR_NUMBER} > pr.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch PR files
-        shell: bash
         run: |
-          set -euo pipefail
           gh api --paginate repos/${{ github.repository }}/pulls/${PR_NUMBER}/files --jq '.[]' | jq -s '.' > files.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch PR commits
-        shell: bash
         run: |
-          set -euo pipefail
           gh api repos/${{ github.repository }}/pulls/${PR_NUMBER}/commits > commits.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Step 5: Download raw PR diff
       - name: Fetch PR diff
-        shell: bash
         run: |
-          set -euo pipefail
           curl -sSL \
             -H Authorization: Bearer ${{ secrets.GITHUB_TOKEN }} \
             -H Accept: application/vnd.github.v3.diff \
@@ -192,9 +185,7 @@ jobs:
 
       # Step 7: Strip excluded paths from diff payload
       - name: Filter diff to excluded paths
-        shell: bash
         run: |
-          set -euo pipefail
           python3 - <<'PY'
           import pathlib, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
@@ -236,17 +227,13 @@ jobs:
 
       # Step 8: Compress & encode diff for payload
       - name: Compress filtered diff
-        shell: bash
         run: |
-          set -euo pipefail
           gzip -c pr.diff > pr.diff.gz
           base64 -w 0 pr.diff.gz > diff.b64
 
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
-        shell: bash
         run: |
-          set -euo pipefail
           echo PR metadata size: $(stat -c%s pr.json) bytes
           echo Files metadata size: $(stat -c%s files.json) bytes
           echo Commits metadata size: $(stat -c%s commits.json) bytes
@@ -282,9 +269,7 @@ jobs:
       # Step 9c: Short-circuit when below threshold
       - name: Diff below threshold
         if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send == 'true' }}
-        shell: bash
         run: |
-          set -euo pipefail
           echo ℹ️ Diff char count (${{ steps.diff_threshold.outputs.diff_char_count }}) is below threshold (${{ steps.diff_threshold.outputs.threshold }}). Skipping n8n send.
 
       - name: Generate Run UUID
@@ -331,8 +316,6 @@ jobs:
             exit 0
           fi
 
-          # Only enforce host allowlist; port and IP ranges are not restricted.
-
           # 2) Inputs check
           for f in pr.json files.json commits.json diff.b64; do
             [[ -f "$f" ]] || { echo "$f missing"; echo "error=true" >> "$GITHUB_OUTPUT"; exit 0; }
@@ -376,9 +359,7 @@ jobs:
           HEADER_FILE=$(mktemp)
           trap 'rm -f "$HEADER_FILE"' EXIT
 
-          RESPONSE="$(curl -sS --tlsv1.2 --proto '=https' --http1.1 \
-            --connect-timeout 10 --max-time 60 \
-            -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
+          RESPONSE="$(curl -sS -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
             -H "Content-Type: application/json" \
             -H "X-Run-Token: $RUN_TOKEN" \
             -H "X-Signature: sha256=${SIG}" \
@@ -402,30 +383,47 @@ jobs:
           # 7) HTTP status first
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
-            echo "Response headers (sanitized):"
-            python3 - <<'PY' "$HEADER_FILE"
+
+            SAFE_HEADERS=$(python3 - "$HEADER_FILE" <<'PY'
             import sys
             from pathlib import Path
 
             header_path = Path(sys.argv[1])
-            sensitive = {"authorization", "proxy-authorization", "set-cookie"}
+            sensitive = {"authorization", "proxy-authorization", "set-cookie", "x-signature", "x-response-signature"}
 
-            for line in header_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not line.strip():
+            lines = []
+            for raw in header_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not raw.strip():
                     continue
-                parts = line.split(":", 1)
-                if len(parts) == 2 and parts[0].strip().lower() in sensitive:
-                    print(f"{parts[0]}: [redacted]")
+                key, sep, value = raw.partition(":")
+                if not sep:
+                    lines.append(raw[:150])
+                    continue
+                key_lower = key.strip().lower()
+                if key_lower in sensitive:
+                    lines.append(f"{key}: [redacted]")
                 else:
-                    print(line[:200])
-          PY
-            echo "Response body preview (sanitized):"
-            SAFE_PREVIEW=$(printf '%s' "$HTTP_BODY" | python3 - <<'PY'
+                    clean = value.strip().replace("\r", " ").replace("\n", " ")
+                    if len(clean) > 160:
+                        clean = clean[:160] + "..."
+                    lines.append(f"{key}: {clean}")
+
+            print("\n".join(lines), end="")
+            PY
+            )
+            echo "Response headers (sanitized):"
+            if [[ -n "$SAFE_HEADERS" ]]; then
+              printf '%s\n' "$SAFE_HEADERS"
+            else
+              echo "(none)"
+            fi
+
+            SAFE_BODY=$(printf '%s' "$HTTP_BODY" | python3 - <<'PY'
             import json
             import sys
 
             raw = sys.stdin.read()
-            keywords = {"receiving_token", "token", "auth", "secrets", "headers", "cookies", "authorization"}
+            keywords = {"receiving_token", "token", "auth", "authorization", "secrets", "cookies", "headers"}
             limit = 400
 
             def truncate(text: str) -> str:
@@ -434,7 +432,8 @@ jobs:
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                print(truncate(raw.replace("\n", " ")))
+                cleaned = ''.join(ch if ch.isprintable() else '?' for ch in raw)
+                print(truncate(cleaned.replace("\n", " ")))
                 sys.exit(0)
 
             def scrub(value):
@@ -449,9 +448,10 @@ jobs:
 
             sanitized = json.dumps(scrub(data), ensure_ascii=False)
             print(truncate(sanitized.replace("\n", " ")))
-          PY
+            PY
             )
-            printf '%s\n' "${SAFE_PREVIEW:-"(unparseable)"}"
+            echo "Response body preview (sanitized):"
+            printf '%s\n' "${SAFE_BODY:-"(unparseable)"}"
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -460,32 +460,36 @@ jobs:
           STATUS="$(jq -r '.status // empty' <<< "$HTTP_BODY")"
           MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY")"
 
-          if [[ -n "${N8N_RECEIVING_TOKEN:-}" ]]; then
-            HEADER_SIG="$(python3 - <<'PY' "$HEADER_FILE"
-            import sys
-            from pathlib import Path
+          if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
+            echo "N8N_RECEIVING_TOKEN must be configured for response verification."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-            header_path = Path(sys.argv[1])
-            sig = ""
-            for line in header_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.lower().startswith("x-response-signature:"):
-                    sig = line.split(":", 1)[1].strip()
-                    break
-            print(sig, end="")
+          HEADER_SIG="$(python3 - <<'PY' "$HEADER_FILE"
+          import sys
+          from pathlib import Path
+
+          header_path = Path(sys.argv[1])
+          sig = ""
+          for line in header_path.read_text().splitlines():
+              if line.lower().startswith("x-response-signature:"):
+                  sig = line.split(":", 1)[1].strip()
+                  break
+          print(sig, end="")
           PY
           )"
-            if [[ -z "$HEADER_SIG" ]]; then
-              echo "Response signature missing."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          if [[ -z "$HEADER_SIG" ]]; then
+            echo "Response signature missing."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-            EXPECTED_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-            if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
-              echo "Response signature mismatch."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          EXPECTED_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+          if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
+            echo "Response signature mismatch."
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           if [[ "$STATUS" == "cancelled" ]]; then
