@@ -384,74 +384,70 @@ jobs:
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
 
-            SAFE_HEADERS=$(python3 - "$HEADER_FILE" <<'PY'
-            import sys
-            from pathlib import Path
-
-            header_path = Path(sys.argv[1])
-            sensitive = {"authorization", "proxy-authorization", "set-cookie", "x-signature", "x-response-signature"}
-
-            lines = []
-            for raw in header_path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if not raw.strip():
-                    continue
-                key, sep, value = raw.partition(":")
-                if not sep:
-                    lines.append(raw[:150])
-                    continue
-                key_lower = key.strip().lower()
-                if key_lower in sensitive:
-                    lines.append(f"{key}: [redacted]")
-                else:
-                    clean = value.strip().replace("\r", " ").replace("\n", " ")
-                    if len(clean) > 160:
-                        clean = clean[:160] + "..."
-                    lines.append(f"{key}: {clean}")
-
-            print("\n".join(lines), end="")
-            PY
-            )
             echo "Response headers (sanitized):"
-            if [[ -n "$SAFE_HEADERS" ]]; then
-              printf '%s\n' "$SAFE_HEADERS"
-            else
-              echo "(none)"
-            fi
+            HEADER_FILE_PATH="$HEADER_FILE" python3 <<'PY'
+          import os
+          from pathlib import Path
 
-            SAFE_BODY=$(printf '%s' "$HTTP_BODY" | python3 - <<'PY'
-            import json
-            import sys
+          header_path = Path(os.environ["HEADER_FILE_PATH"])
+          sensitive = {"authorization", "proxy-authorization", "set-cookie", "x-signature", "x-response-signature"}
 
-            raw = sys.stdin.read()
-            keywords = {"receiving_token", "token", "auth", "authorization", "secrets", "cookies", "headers"}
-            limit = 400
+          lines = []
+          for raw in header_path.read_text(encoding="utf-8", errors="replace").splitlines():
+              if not raw.strip():
+                  continue
+              key, sep, value = raw.partition(":")
+              if not sep:
+                  lines.append(raw[:150])
+                  continue
+              key_lower = key.strip().lower()
+              if key_lower in sensitive:
+                  lines.append(f"{key}: [redacted]")
+              else:
+                  clean = value.strip().replace("\r", " ").replace("\n", " ")
+                  if len(clean) > 160:
+                      clean = clean[:160] + "..."
+                  lines.append(f"{key}: {clean}")
 
-            def truncate(text: str) -> str:
-                return text[:limit] + ("..." if len(text) > limit else "")
+          if lines:
+              print("\n".join(lines))
+          else:
+              print("(none)")
+          PY
 
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                cleaned = ''.join(ch if ch.isprintable() else '?' for ch in raw)
-                print(truncate(cleaned.replace("\n", " ")))
-                sys.exit(0)
+                      echo "Response body preview (sanitized):"
+                      printf '%s' "$HTTP_BODY" | python3 <<'PY'
+          import json
+          import sys
 
-            def scrub(value):
-                if isinstance(value, dict):
-                    return {
-                        key: ("[redacted]" if key.lower() in keywords else scrub(val))
-                        for key, val in value.items()
-                    }
-                if isinstance(value, list):
-                    return [scrub(item) for item in value]
-                return value
+          raw = sys.stdin.read()
+          keywords = {"receiving_token", "token", "auth", "authorization", "secrets", "cookies", "headers"}
+          limit = 400
 
-            sanitized = json.dumps(scrub(data), ensure_ascii=False)
-            print(truncate(sanitized.replace("\n", " ")))
-            PY
-            )
-            echo "Response body preview (sanitized):"
-            printf '%s\n' "${SAFE_BODY:-"(unparseable)"}"
+          def truncate(text: str) -> str:
+              return text[:limit] + ("..." if len(text) > limit else "")
+
+          try:
+              data = json.loads(raw)
+          except json.JSONDecodeError:
+              cleaned = ''.join(ch if ch.isprintable() else '?' for ch in raw)
+              print(truncate(cleaned.replace("\n", " ")))
+              sys.exit(0)
+
+          def scrub(value):
+              if isinstance(value, dict):
+                  return {
+                      key: ("[redacted]" if key.lower() in keywords else scrub(val))
+                      for key, val in value.items()
+                  }
+              if isinstance(value, list):
+                  return [scrub(item) for item in value]
+              return value
+
+          sanitized = json.dumps(scrub(data), ensure_ascii=False)
+          print(truncate(sanitized.replace("\n", " ")))
+          PY
+
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
