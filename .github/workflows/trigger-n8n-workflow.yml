@@ -285,7 +285,7 @@ jobs:
           # Reused as HMAC secret ONLY (not sent in any header directly)
           N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN }}
           RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}   # UUID, not GITHUB_TOKEN
-          N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || 'n8n.papermoon.io' }}
+          N8N_ALLOWED_HOST: ${{ secrets.N8N_ALLOWED_HOST }}
         shell: bash
         run: |
           set -euo pipefail
