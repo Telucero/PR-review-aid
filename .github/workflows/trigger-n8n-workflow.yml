@@ -636,7 +636,7 @@ jobs:
           done
 
           echo "-- Skipped upstream comments --"
-          jq -r 'if type==array then .[0] else . end | .skipped_comments // [] | .[] | \(.file_path // -)#L\(.line_number // -): \(.reason // -)' response_body.json || echo "None."
+          jq -r 'if type=="array" then .[0] else . end | .skipped_comments // [] | .[] | \(.file_path // -)#L\(.line_number // -): \(.reason // -)' response_body.json || echo "None."
 
           echo "✅ Done. Suggestions posted."
 
@@ -651,23 +651,23 @@ jobs:
 
           VERIFS=$(
             printf '%s' "$RESPONSE_BODY" | jq -c '
-              (if type==array then .[0] else . end) as $o
+              (if type=="array" then .[0] else . end) as $o
               | def to_arr(x):
-                  if (x|type) == array then x
-                  elif (x|type) == object then [x]
-                  elif (x|type) == string then (try (x|fromjson) catch [])
+                  if (x|type) == "array" then x
+                  elif (x|type) == "object" then [x]
+                  elif (x|type) == "string" then (try (x|fromjson) catch [])
                   else [] end;
 
               [
                 (to_arr($o.reviews) // []) as $r1
-                  | ($r1 | map(select(((.type? | tostring | ascii_downcase) == verification)))
+                  | ($r1 | map(select(((.type? | tostring | ascii_downcase) == "verification")))
                             | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
                 (to_arr($o.review) // []) as $r2
-                  | ($r2 | map(select(((.type? | tostring | ascii_downcase) == verification)))
+                  | ($r2 | map(select(((.type? | tostring | ascii_downcase) == "verification")))
                             | map(.formattedReview // .review // .body // .comment // .text // .content // "")),
 
                 ($o | .. | objects
-                  | select(((.type? | tostring | ascii_downcase) == verification))
+                  | select(((.type? | tostring | ascii_downcase) == "verification"))
                   | (.formattedReview // .review // .body // .comment // .text // .content // ""))
 
               ]
@@ -683,9 +683,9 @@ jobs:
             exit 0
           fi
 
-          OWNER=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type==array then .[0].repo_owner else .repo_owner end // empty')
-          REPO=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type==array then .[0].repo_name else .repo_name end // empty')
-          PR=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type==array then .[0].pr_number else .pr_number end // empty')
+          OWNER=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_owner else .repo_owner end // empty')
+          REPO=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].repo_name else .repo_name end // empty')
+          PR=$(printf '%s' "$RESPONSE_BODY" | jq -r 'if type=="array" then .[0].pr_number else .pr_number end // empty')
 
           if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR" ]; then
             echo "Missing repo context; skipping verification comments."
