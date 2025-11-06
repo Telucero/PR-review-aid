@@ -487,73 +487,72 @@ jobs:
       - name: Prepare batched review payloads
         run: |
           python3 - <<'PY'
-          '''\
           from pathlib import Path
           import json
 
-            data = json.loads(Path('response_body.json').read_text() or 'null')
-            if isinstance(data, list):
-                data = data[0] if data else {}
+          data = json.loads(Path('response_body.json').read_text() or 'null')
+          if isinstance(data, list):
+              data = data[0] if data else {}
 
-            payloads = data.get('prepared_comment_payloads') or []
+          payloads = data.get('prepared_comment_payloads') or []
 
-            def normalize(raw):
-                path = raw.get('path') or raw.get('file_path')
-                if not path:
-                    return None
-                body = (raw.get('body') or '').strip()
-                if not body:
-                    body = '```suggestion\\n```\\n'
-                comment = {'path': path, 'body': body}
+          def normalize(raw):
+              path = raw.get('path') or raw.get('file_path')
+              if not path:
+                  return None
+              body = (raw.get('body') or '').strip()
+              if not body:
+                  body = '```suggestion\n```\n'
+              comment = {'path': path, 'body': body}
 
-                if 'line' in raw and raw['line'] is not None:
-                    comment['line'] = raw['line']
-                    if raw.get('side'):
-                        comment['side'] = raw['side']
-                    if raw.get('start_line') is not None:
-                        comment['start_line'] = raw['start_line']
-                        comment['start_side'] = raw.get('start_side', 'RIGHT')
-                elif 'position' in raw and raw['position'] is not None:
-                    comment['position'] = raw['position']
+              if 'line' in raw and raw['line'] is not None:
+                  comment['line'] = raw['line']
+                  if raw.get('side'):
+                      comment['side'] = raw['side']
+                  if raw.get('start_line') is not None:
+                      comment['start_line'] = raw['start_line']
+                      comment['start_side'] = raw.get('start_side', 'RIGHT')
+              elif 'position' in raw and raw['position'] is not None:
+                  comment['position'] = raw['position']
 
-                commit_id = raw.get('commit_id')
-                return comment, commit_id
+              commit_id = raw.get('commit_id')
+              return comment, commit_id
 
-            normalized = [normalize(raw) for raw in payloads]
-            normalized = [item for item in normalized if item is not None]
-            seen = set()
-            deduped = []
-            for comment, cid in normalized:
-                key = (cid or '', json.dumps(comment, sort_keys=True))
-                if key in seen:
-                    continue
-                seen.add(key)
-                deduped.append((comment, cid))
+          normalized = [normalize(raw) for raw in payloads]
+          normalized = [item for item in normalized if item is not None]
+          seen = set()
+          deduped = []
+          for comment, cid in normalized:
+              key = (cid or '', json.dumps(comment, sort_keys=True))
+              if key in seen:
+                  continue
+              seen.add(key)
+              deduped.append((comment, cid))
 
-            comments = [item[0] for item in deduped]
-            commit_ids = [item[1] for item in deduped]
+          comments = [item[0] for item in deduped]
+          commit_ids = [item[1] for item in deduped]
 
-            chunk_size = 30
-            total = len(comments)
-            batches = []
-            for start in range(0, total, chunk_size):
-                chunk = comments[start:start + chunk_size]
-                summary = f"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})"
-                chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
-                batch = {'body': summary, 'comments': chunk}
-                if len(chunk_commit_ids) == 1:
-                    batch['commit_id'] = chunk_commit_ids.pop()
-                batches.append(batch)
+          chunk_size = 30
+          total = len(comments)
+          batches = []
+          for start in range(0, total, chunk_size):
+              chunk = comments[start:start + chunk_size]
+              summary = f"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})"
+              chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
+              batch = {'body': summary, 'comments': chunk}
+              if len(chunk_commit_ids) == 1:
+                  batch['commit_id'] = chunk_commit_ids.pop()
+              batches.append(batch)
 
-            output = {
-                'status': data.get('status'),
-                'owner': data.get('repo_owner'),
-                'repo': data.get('repo_name'),
-                'pr': data.get('pr_number'),
-                'batches': batches
-            }
-            Path('review_batches.json').write_text(json.dumps(output, indent=2))
-            ''' )
+          output = {
+              'status': data.get('status'),
+              'owner': data.get('repo_owner'),
+              'repo': data.get('repo_name'),
+              'pr': data.get('pr_number'),
+              'batches': batches
+          }
+          Path('review_batches.json').write_text(json.dumps(output, indent=2))
+          PY
 
       # Step 17: Post grouped inline suggestions
       - name: Post batched inline suggestions
