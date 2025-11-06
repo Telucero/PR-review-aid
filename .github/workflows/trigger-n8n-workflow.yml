@@ -125,8 +125,8 @@ jobs:
       - name: Fetch PR diff
         run: |
           curl -sSL \
-            -H Authorization: Bearer ${{ secrets.GITHUB_TOKEN }} \
-            -H Accept: application/vnd.github.v3.diff \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3.diff" \
             https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER} \
             > pr.diff
 
