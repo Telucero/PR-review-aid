@@ -635,8 +635,8 @@ jobs:
             fi
           done
 
-          echo "—— Skipped upstream (for visibility) ——"
-          jq -r 'if type==array then .[0] else . end | .skipped_comments // [] | .[] | \(.file_path // -)#L\(.line_number // -): \(.reason // -)' response_body.json
+          echo "-- Skipped upstream comments --"
+          jq -r 'if type==array then .[0] else . end | .skipped_comments // [] | .[] | \(.file_path // -)#L\(.line_number // -): \(.reason // -)' response_body.json || echo "None."
 
           echo "✅ Done. Suggestions posted."
 
