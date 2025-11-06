@@ -304,13 +304,14 @@ jobs:
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ -z "${N8N_ALLOWED_HOST:-}" ]]; then
+          ALLOWED_HOST="$(printf '%s' "${N8N_ALLOWED_HOST:-}" | tr -d '\r\n ' )"
+          if [[ -z "$ALLOWED_HOST" ]]; then
             echo "N8N_ALLOWED_HOST must be set."
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ "$HOST" != "$N8N_ALLOWED_HOST" ]]; then
-            echo "Webhook host '$HOST' not allowed (expected '$N8N_ALLOWED_HOST')."
+          if [[ "$HOST" != "$ALLOWED_HOST" ]]; then
+            echo "Webhook host '$HOST' not allowed (expected '$ALLOWED_HOST')."
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
