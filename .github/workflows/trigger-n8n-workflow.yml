@@ -302,7 +302,6 @@ jobs:
           RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}   # UUID, not GITHUB_TOKEN
           N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
           N8N_ALLOWED_HOST: ${{ vars.N8N_ALLOWED_HOST || '' }}
-          N8N_ALLOWED_PORT: ${{ vars.N8N_ALLOWED_PORT || '443' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -332,72 +331,7 @@ jobs:
             exit 0
           fi
 
-          ALLOWED_PORT="${N8N_ALLOWED_PORT:-443}"
-          if [[ ! "$ALLOWED_PORT" =~ ^[0-9]+$ ]]; then
-            echo "Invalid N8N_ALLOWED_PORT='$ALLOWED_PORT'; defaulting to 443."
-            ALLOWED_PORT=443
-          fi
-
-          PORT="$(python3 - "$N8N_WEBHOOK_URL" <<'PY'
-          from urllib.parse import urlparse
-          import sys
-
-          parsed = urlparse(sys.argv[1])
-          print(parsed.port or 443)
-          PY
-          )"
-          if [[ "$PORT" != "$ALLOWED_PORT" ]]; then
-            echo "Webhook port '$PORT' not allowed (expected '$ALLOWED_PORT')."
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          HOST_CHECK_FILE=$(mktemp)
-          if ! python3 - "$HOST" "$HOST_CHECK_FILE" <<'PY'
-            import sys
-            from pathlib import Path
-            import socket
-            import ipaddress
-
-            host = sys.argv[1]
-            out_path = Path(sys.argv[2])
-
-            try:
-                infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-            except socket.gaierror:
-                sys.exit(1)
-
-            ips = sorted({info[4][0] for info in infos})
-            for ip in ips:
-                addr = ipaddress.ip_address(ip)
-                if any((addr.is_private, addr.is_loopback, addr.is_link_local, addr.is_reserved, addr.is_multicast)):
-                    out_path.write_text(ip, encoding="utf-8")
-                    sys.exit(2)
-
-            out_path.write_text(",".join(ips), encoding="utf-8")
-          PY
-          then
-            STATUS=$?
-            BLOCKED_IP=""
-            if [[ -f "$HOST_CHECK_FILE" ]]; then
-              BLOCKED_IP=$(cat "$HOST_CHECK_FILE")
-            fi
-            rm -f "$HOST_CHECK_FILE"
-            if [[ $STATUS -eq 1 ]]; then
-              echo "Unable to resolve webhook host '$HOST'."
-            else
-              echo "Webhook host resolves to disallowed address '${BLOCKED_IP}'."
-            fi
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          HOST_IPS=$(cat "$HOST_CHECK_FILE")
-          rm -f "$HOST_CHECK_FILE"
-          if [[ -z "$HOST_IPS" ]]; then
-            echo "Unable to determine webhook host IPs."
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # Only enforce host allowlist; port and IP ranges are not restricted.
 
           # 2) Inputs check
           for f in pr.json files.json commits.json diff.b64; do
