@@ -527,13 +527,21 @@ jobs:
                 PAYLOAD_FOR_SIG="$HTTP_BODY"
               fi
               echo "Payload used for signature (base64): $(printf '%s' "$PAYLOAD_FOR_SIG" | base64 -w 0)"
+              echo "Payload used for signature (raw):"
+              printf '%s\n' "$PAYLOAD_FOR_SIG"
               EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
               if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
-                echo "Response signature mismatch."
-                echo "Header signature:   $HEADER_SIG"
-                echo "Computed signature: $EXPECTED_SIG"
-                echo "error=true" >> "$GITHUB_OUTPUT"
-                exit 0
+                echo "Payload-only signature mismatch; falling back to full body."
+                BODY_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+                if [[ "$HEADER_SIG" != "$BODY_SIG" ]]; then
+                  echo "Response signature mismatch."
+                  echo "Header signature:   $HEADER_SIG"
+                  echo "Payload signature:  $EXPECTED_SIG"
+                  echo "Body signature:     $BODY_SIG"
+                  echo "error=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+                echo "Header signature matched entire response body."
               fi
             else
               RECEIVED_TOKEN="$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' <<< "$HTTP_BODY")"
