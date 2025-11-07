@@ -278,6 +278,12 @@ jobs:
         id: run_uuid
         shell: bash
         run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
+
+      - name: Mask run token
+        if: ${{ steps.run_uuid.outputs.run_token != '' }}
+        env:
+          RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}
+        run: echo "::add-mask::$RUN_TOKEN"
         
       - name: Combine and send to n8n webhook 
         id: send_payload
