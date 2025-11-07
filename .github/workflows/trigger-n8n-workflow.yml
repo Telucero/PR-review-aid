@@ -382,111 +382,13 @@ jobs:
           HTTP_STATUS="$(printf '%s\n' "$RESPONSE" | tail -n1)"
           echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
           echo "n8n responded with status: $HTTP_STATUS"
-          if command -v jq >/dev/null 2>&1; then
-            SCRUBBED_BODY="$(printf '%s' "$HTTP_BODY" | jq '
-              def scrub:
-                if type == "object" then
-                  with_entries(
-                    (.key | ascii_downcase) as $k
-                    | if ($k == "receiving_token" or $k == "token" or $k == "auth" or $k == "authorization" or $k == "secrets" or $k == "cookies" or $k == "headers")
-                      then empty
-                      else (.value |= scrub)
-                      end
-                  )
-                elif type == "array" then
-                  map(scrub)
-                else
-                  .
-                end;
-              scrub
-            ' 2>/dev/null || printf '%s' "$HTTP_BODY")"
-            echo "n8n response body (scrubbed preview):"
-            printf '%s\n' "$SCRUBBED_BODY"
-          else
-            echo "n8n response body (raw):"
-            printf '%s\n' "$HTTP_BODY"
-          fi
 
-          # 7) HTTP status first
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
-
-            echo "Response headers (sanitized):"
-            HEADER_FILE_PATH="$HEADER_FILE" python3 <<'PY'
-          import os
-          from pathlib import Path
-
-          header_path = Path(os.environ["HEADER_FILE_PATH"])
-          sensitive = {"authorization", "proxy-authorization", "set-cookie", "x-signature", "x-response-signature"}
-
-          lines = []
-          for raw in header_path.read_text(encoding="utf-8", errors="replace").splitlines():
-              if not raw.strip():
-                  continue
-              key, sep, value = raw.partition(":")
-              if not sep:
-                  lines.append(raw[:150])
-                  continue
-              key_lower = key.strip().lower()
-              if key_lower in sensitive:
-                  lines.append(f"{key}: [redacted]")
-              else:
-                  clean = value.strip().replace("\r", " ").replace("\n", " ")
-                  if len(clean) > 160:
-                      clean = clean[:160] + "..."
-                  lines.append(f"{key}: {clean}")
-
-          if lines:
-              print("\n".join(lines))
-          else:
-              print("(none)")
-          PY
-
-                      echo "Response body preview (sanitized):"
-                      printf '%s' "$HTTP_BODY" | python3 <<'PY'
-          import json
-          import sys
-
-          raw = sys.stdin.read()
-          keywords = {"receiving_token", "token", "auth", "authorization", "secrets", "cookies", "headers"}
-          limit = 400
-
-          def truncate(text: str) -> str:
-              return text[:limit] + ("..." if len(text) > limit else "")
-
-          def emit(text: str) -> None:
-              stripped = text.strip()
-              if not stripped:
-                  print("(response empty or fully redacted)")
-              else:
-                  print(stripped)
-
-          try:
-              data = json.loads(raw)
-          except json.JSONDecodeError:
-              cleaned = ''.join(ch if ch.isprintable() else '?' for ch in raw)
-              emit(truncate(cleaned.replace("\n", " ")))
-              sys.exit(0)
-
-          def scrub(value):
-              if isinstance(value, dict):
-                  return {
-                      key: ("[redacted]" if key.lower() in keywords else scrub(val))
-                      for key, val in value.items()
-                  }
-              if isinstance(value, list):
-                  return [scrub(item) for item in value]
-              return value
-
-          sanitized = json.dumps(scrub(data), ensure_ascii=False)
-          emit(truncate(sanitized.replace("\n", " ")))
-          PY
-
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # 8) Minimal parse; do not log body
           STATUS="$(jq -r '.status // empty' <<< "$HTTP_BODY")"
           MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY")"
 
@@ -525,113 +427,20 @@ jobs:
           ):
               raise SystemExit(0)
 
-          source = payload[0]["payload"]
-
-          print(source, end="")
+          print(payload[0]["payload"], end="")
           PY
               )"
               if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
                 PAYLOAD_FOR_SIG="$HTTP_BODY"
               fi
-              PAYLOAD_VARIANT_SIGS="$(
-                PAYLOAD_RAW="$PAYLOAD_FOR_SIG" python3 - <<'PY'
-          import os
-          import json
-          import hashlib
-          import hmac
-          import base64
-
-          token = os.environ.get("N8N_RECEIVING_TOKEN", "").encode()
-          source = os.environ.get("PAYLOAD_RAW", "")
-          variants = {"raw": source, "raw_trim": source.strip()}
-
-          try:
-              parsed = json.loads(source)
-          except json.JSONDecodeError:
-              parsed = None
-
-          if parsed is not None:
-              compact = json.dumps(parsed, separators=(",", ":"), sort_keys=True)
-              variants["json_compact"] = compact
-              pretty = json.dumps(parsed, indent=2, sort_keys=True)
-              variants["json_pretty"] = pretty
-
-          http_body = os.environ.get("HTTP_BODY_VAR", "")
-          try:
-              http_data = json.loads(http_body)
-          except json.JSONDecodeError:
-              http_data = None
-
-          if isinstance(http_data, dict):
-              payload_items = http_data.get("payload")
-              if payload_items is not None:
-                  try:
-                      variants["payload_array_stable"] = json.dumps(
-                          payload_items,
-                          separators=(",", ":"),
-                          sort_keys=True,
-                      )
-                  except (TypeError, ValueError):
-                      pass
-              try:
-                  variants["full_body_stable"] = json.dumps(
-                      http_data,
-                      separators=(",", ":"),
-                      sort_keys=True,
-                  )
-              except (TypeError, ValueError):
-                  pass
-
-          unique_variants = {}
-          for name, value in variants.items():
-              if value not in unique_variants.values():
-                  unique_variants[name] = value
-
-          if not token:
-              print(json.dumps({"error": "missing N8N_RECEIVING_TOKEN"}), end="")
-              raise SystemExit(0)
-
-          def sign(value: str) -> str:
-              digest = hmac.new(token, value.encode(), hashlib.sha256).digest()
-              return base64.b64encode(digest).decode()
-
-          signatures = {name: sign(value) for name, value in unique_variants.items()}
-          print(json.dumps(signatures), end="")
-          PY
-              )"
-              if [[ -n "$PAYLOAD_VARIANT_SIGS" ]]; then
-                echo "Payload variant signatures:"
-                if command -v jq >/dev/null 2>&1; then
-                  printf '%s\n' "$PAYLOAD_VARIANT_SIGS" | jq -r '
-                    to_entries[]
-                    | "  \(.key): sha256=\(.value)"
-                  '
-                else
-                  printf '%s\n' "$PAYLOAD_VARIANT_SIGS"
-                fi
-              fi
-              echo "HMAC secret (length): $((${#N8N_RECEIVING_TOKEN})) bytes"
-              echo "Payload used for signature (base64): $(printf '%s' "$PAYLOAD_FOR_SIG" | base64 -w 0)"
-              echo "Payload used for signature (raw):"
-              printf '%s\n' "$PAYLOAD_FOR_SIG"
               EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-              if [[ "$HEADER_SIG" == "$EXPECTED_SIG" ]]; then
-                echo "Header signature matched payload string directly."
-              else
-                echo "Payload-only signature mismatch; falling back to full body."
-                echo "Full response body used for fallback signature (base64): $(printf '%s' "$HTTP_BODY" | base64 -w 0)"
-                echo "Full response body used for fallback signature (raw):"
-                printf '%s\n' "$HTTP_BODY"
+              if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
                 BODY_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
                 if [[ "$HEADER_SIG" != "$BODY_SIG" ]]; then
                   echo "Response signature mismatch."
-                  echo "Header signature:   $HEADER_SIG"
-                  echo "Payload signature:  $EXPECTED_SIG"
-                  echo "Body signature:     $BODY_SIG"
                   echo "error=true" >> "$GITHUB_OUTPUT"
                   exit 0
                 fi
-                echo "Header signature matched entire response body."
               fi
             else
               RECEIVED_TOKEN="$(jq -r 'if type=="array" then .[0].receiving_token else .receiving_token end // empty' <<< "$HTTP_BODY")"
