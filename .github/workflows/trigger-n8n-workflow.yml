@@ -520,7 +520,7 @@ jobs:
           if payload is None:
               raise SystemExit(0)
 
-          print(json.dumps(payload, separators=(",", ":")), end="")
+          print(json.dumps(payload, separators=(",", ":"), sort_keys=True), end="")
           PY
               )"
               if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
