@@ -517,23 +517,15 @@ jobs:
               data = None
 
           payload = data.get("payload") if isinstance(data, dict) else None
-          if payload is None:
+          if (
+              not isinstance(payload, list)
+              or not payload
+              or not isinstance(payload[0], dict)
+              or not isinstance(payload[0].get("payload"), str)
+          ):
               raise SystemExit(0)
 
-          def normalize(obj):
-              return json.dumps(obj, separators=(",", ":"), sort_keys=True)
-
-          if isinstance(payload, str):
-              source = payload
-          elif (
-              isinstance(payload, list)
-              and len(payload) == 1
-              and isinstance(payload[0], dict)
-              and isinstance(payload[0].get("payload"), str)
-          ):
-              source = payload[0]["payload"]
-          else:
-              source = normalize(payload)
+          source = payload[0]["payload"]
 
           print(source, end="")
           PY
@@ -541,6 +533,55 @@ jobs:
               if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
                 PAYLOAD_FOR_SIG="$HTTP_BODY"
               fi
+              PAYLOAD_VARIANT_SIGS="$(
+                PAYLOAD_RAW="$PAYLOAD_FOR_SIG" python3 - <<'PY'
+          import os
+          import json
+          import hashlib
+          import hmac
+          import base64
+
+          token = os.environ.get("N8N_RECEIVING_TOKEN", "").encode()
+          source = os.environ.get("PAYLOAD_RAW", "")
+          variants = {"raw": source, "raw_trim": source.strip()}
+
+          try:
+              parsed = json.loads(source)
+          except json.JSONDecodeError:
+              parsed = None
+
+          if parsed is not None:
+              compact = json.dumps(parsed, separators=(",", ":"), sort_keys=True)
+              variants["json_compact"] = compact
+              pretty = json.dumps(parsed, indent=2, sort_keys=True)
+              variants["json_pretty"] = pretty
+
+          unique_variants = {}
+          for name, value in variants.items():
+              if value not in unique_variants.values():
+                  unique_variants[name] = value
+
+          if not token:
+              print(json.dumps({"error": "missing N8N_RECEIVING_TOKEN"}), end="")
+              raise SystemExit(0)
+
+          def sign(value: str) -> str:
+              digest = hmac.new(token, value.encode(), hashlib.sha256).digest()
+              return base64.b64encode(digest).decode()
+
+          signatures = {name: sign(value) for name, value in unique_variants.items()}
+          print(json.dumps(signatures), end="")
+          PY
+              )"
+              if [[ -n "$PAYLOAD_VARIANT_SIGS" ]]; then
+                echo "Payload variant signatures:"
+                if command -v jq >/dev/null 2>&1; then
+                  printf '%s\n' "$PAYLOAD_VARIANT_SIGS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+                else
+                  printf '%s\n' "$PAYLOAD_VARIANT_SIGS"
+                fi
+              fi
+              echo "HMAC secret (length): $((${#N8N_RECEIVING_TOKEN})) bytes"
               echo "Payload used for signature (base64): $(printf '%s' "$PAYLOAD_FOR_SIG" | base64 -w 0)"
               echo "Payload used for signature (raw):"
               printf '%s\n' "$PAYLOAD_FOR_SIG"
