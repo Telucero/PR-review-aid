@@ -556,6 +556,32 @@ jobs:
               pretty = json.dumps(parsed, indent=2, sort_keys=True)
               variants["json_pretty"] = pretty
 
+          http_body = os.environ.get("HTTP_BODY_VAR", "")
+          try:
+              http_data = json.loads(http_body)
+          except json.JSONDecodeError:
+              http_data = None
+
+          if isinstance(http_data, dict):
+              payload_items = http_data.get("payload")
+              if payload_items is not None:
+                  try:
+                      variants["payload_array_stable"] = json.dumps(
+                          payload_items,
+                          separators=(",", ":"),
+                          sort_keys=True,
+                      )
+                  except (TypeError, ValueError):
+                      pass
+              try:
+                  variants["full_body_stable"] = json.dumps(
+                      http_data,
+                      separators=(",", ":"),
+                      sort_keys=True,
+                  )
+              except (TypeError, ValueError):
+                  pass
+
           unique_variants = {}
           for name, value in variants.items():
               if value not in unique_variants.values():
@@ -576,7 +602,10 @@ jobs:
               if [[ -n "$PAYLOAD_VARIANT_SIGS" ]]; then
                 echo "Payload variant signatures:"
                 if command -v jq >/dev/null 2>&1; then
-                  printf '%s\n' "$PAYLOAD_VARIANT_SIGS" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+                  printf '%s\n' "$PAYLOAD_VARIANT_SIGS" | jq -r '
+                    to_entries[]
+                    | "  \(.key): sha256=\(.value)"
+                  '
                 else
                   printf '%s\n' "$PAYLOAD_VARIANT_SIGS"
                 fi
@@ -586,7 +615,9 @@ jobs:
               echo "Payload used for signature (raw):"
               printf '%s\n' "$PAYLOAD_FOR_SIG"
               EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-              if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
+              if [[ "$HEADER_SIG" == "$EXPECTED_SIG" ]]; then
+                echo "Header signature matched payload string directly."
+              else
                 echo "Payload-only signature mismatch; falling back to full body."
                 echo "Full response body used for fallback signature (base64): $(printf '%s' "$HTTP_BODY" | base64 -w 0)"
                 echo "Full response body used for fallback signature (raw):"
