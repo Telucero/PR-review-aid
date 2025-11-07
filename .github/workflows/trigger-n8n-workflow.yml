@@ -126,7 +126,7 @@ jobs:
       - name: Fetch PR diff
         run: |
           curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --connect-timeout 5 --max-time 20 --retry 2 --retry-all-errors \
+            --retry 2 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3.diff" \
@@ -371,7 +371,7 @@ jobs:
           trap 'rm -f "$HEADER_FILE"' EXIT
 
           RESPONSE="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --connect-timeout 5 --max-time 20 --retry 2 --retry-all-errors \
+            --retry 2 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
             -H "Content-Type: application/json" \
@@ -697,7 +697,7 @@ jobs:
             fi
 
             RESP=$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-              --connect-timeout 5 --max-time 20 --retry 2 --retry-all-errors \
+              --retry 2 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -w '%{http_code}' -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -793,7 +793,7 @@ jobs:
 
             JSON_PAYLOAD=$(jq -nc --arg b "$BODY" '{body:$b}')
             RESP=$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-              --connect-timeout 5 --max-time 20 --retry 2 --retry-all-errors \
+              --retry 2 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -w '%{http_code}' -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -894,7 +894,7 @@ jobs:
             '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}')
 
           curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --connect-timeout 5 --max-time 20 --retry 2 --retry-all-errors \
+            --retry 2 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -X POST \
             -H "Content-Type: application/json" \
