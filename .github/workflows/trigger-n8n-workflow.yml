@@ -736,6 +736,11 @@ jobs:
               data = data[0] if data else {}
 
           payload_entries = data.get('payload') or []
+          if isinstance(payload_entries, str):
+              try:
+                  payload_entries = json.loads(payload_entries)
+              except json.JSONDecodeError:
+                  payload_entries = []
           if isinstance(payload_entries, dict):
               primary_payload = payload_entries
           elif isinstance(payload_entries, list) and payload_entries:
