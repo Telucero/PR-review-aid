@@ -520,7 +520,22 @@ jobs:
           if payload is None:
               raise SystemExit(0)
 
-          print(json.dumps(payload, separators=(",", ":"), sort_keys=True), end="")
+          def normalize(obj):
+              return json.dumps(obj, separators=(",", ":"), sort_keys=True)
+
+          if isinstance(payload, str):
+              source = payload
+          elif (
+              isinstance(payload, list)
+              and len(payload) == 1
+              and isinstance(payload[0], dict)
+              and isinstance(payload[0].get("payload"), str)
+          ):
+              source = payload[0]["payload"]
+          else:
+              source = normalize(payload)
+
+          print(source, end="")
           PY
               )"
               if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
@@ -532,6 +547,9 @@ jobs:
               EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
               if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
                 echo "Payload-only signature mismatch; falling back to full body."
+                echo "Full response body used for fallback signature (base64): $(printf '%s' "$HTTP_BODY" | base64 -w 0)"
+                echo "Full response body used for fallback signature (raw):"
+                printf '%s\n' "$HTTP_BODY"
                 BODY_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
                 if [[ "$HEADER_SIG" != "$BODY_SIG" ]]; then
                   echo "Response signature mismatch."
