@@ -67,16 +67,16 @@ jobs:
         run: |
           set -euo pipefail
           PERMISSION=$(gh api \
-            -H Accept: application/vnd.github+json \
+            -H "Accept: application/vnd.github+json" \
             repos/${REPO}/collaborators/${ACTOR}/permission \
-            --jq '.permission // ')
+            --jq '.permission // ""')
 
           case $PERMISSION in
             admin|maintain|write)
-              echo ✅ ${ACTOR} has ${PERMISSION} permission.
+              echo "✅ ${ACTOR} has ${PERMISSION} permission."
               ;;
             *)
-              echo ❌ ${ACTOR} lacks write or maintain access (permission='${PERMISSION}').
+              echo "❌ ${ACTOR} lacks write or maintain access (permission='${PERMISSION}')."
               exit 1
               ;;
           esac
@@ -382,6 +382,30 @@ jobs:
           HTTP_STATUS="$(printf '%s\n' "$RESPONSE" | tail -n1)"
           echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
           echo "n8n responded with status: $HTTP_STATUS"
+          if command -v jq >/dev/null 2>&1; then
+            SCRUBBED_BODY="$(printf '%s' "$HTTP_BODY" | jq '
+              def scrub:
+                if type == "object" then
+                  with_entries(
+                    (.key | ascii_downcase) as $k
+                    | if ($k == "receiving_token" or $k == "token" or $k == "auth" or $k == "authorization" or $k == "secrets" or $k == "cookies" or $k == "headers")
+                      then empty
+                      else (.value |= scrub)
+                      end
+                  )
+                elif type == "array" then
+                  map(scrub)
+                else
+                  .
+                end;
+              scrub
+            ' 2>/dev/null || printf '%s' "$HTTP_BODY")"
+            echo "n8n response body (scrubbed preview):"
+            printf '%s\n' "$SCRUBBED_BODY"
+          else
+            echo "n8n response body (raw):"
+            printf '%s\n' "$HTTP_BODY"
+          fi
 
           # 7) HTTP status first
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
@@ -430,11 +454,18 @@ jobs:
           def truncate(text: str) -> str:
               return text[:limit] + ("..." if len(text) > limit else "")
 
+          def emit(text: str) -> None:
+              stripped = text.strip()
+              if not stripped:
+                  print("(response empty or fully redacted)")
+              else:
+                  print(stripped)
+
           try:
               data = json.loads(raw)
           except json.JSONDecodeError:
               cleaned = ''.join(ch if ch.isprintable() else '?' for ch in raw)
-              print(truncate(cleaned.replace("\n", " ")))
+              emit(truncate(cleaned.replace("\n", " ")))
               sys.exit(0)
 
           def scrub(value):
@@ -448,7 +479,7 @@ jobs:
               return value
 
           sanitized = json.dumps(scrub(data), ensure_ascii=False)
-          print(truncate(sanitized.replace("\n", " ")))
+          emit(truncate(sanitized.replace("\n", " ")))
           PY
 
             echo "error=true" >> "$GITHUB_OUTPUT"
@@ -474,9 +505,33 @@ jobs:
           PY
           )"
             if [[ -n "$HEADER_SIG" ]]; then
-              EXPECTED_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+              PAYLOAD_FOR_SIG="$(
+                HTTP_BODY_VAR="$HTTP_BODY" python3 - <<'PY'
+          import json
+          import os
+
+          body = os.environ.get("HTTP_BODY_VAR", "")
+          try:
+              data = json.loads(body)
+          except json.JSONDecodeError:
+              data = None
+
+          payload = data.get("payload") if isinstance(data, dict) else None
+          if payload is None:
+              raise SystemExit(0)
+
+          print(json.dumps(payload, separators=(",", ":")), end="")
+          PY
+              )"
+              if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
+                PAYLOAD_FOR_SIG="$HTTP_BODY"
+              fi
+              echo "Payload used for signature (base64): $(printf '%s' "$PAYLOAD_FOR_SIG" | base64 -w 0)"
+              EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
               if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
                 echo "Response signature mismatch."
+                echo "Header signature:   $HEADER_SIG"
+                echo "Computed signature: $EXPECTED_SIG"
                 echo "error=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
