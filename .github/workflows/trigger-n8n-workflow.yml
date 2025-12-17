@@ -1,4 +1,4 @@
-name: Trigger n8n Webhook with Complete PR Info
+name: Nathan
 
 on:
   pull_request:
@@ -401,14 +401,9 @@ jobs:
           fi
 
           # 2) Inputs check
-          for f in pr.json files.json commits.json diff.b64; do
+          for f in pr.json files.json commits.json diff.b64 added_lines.json; do
             [[ -f "$f" ]] || { echo "$f missing"; echo "error=true" >> "$GITHUB_OUTPUT"; exit 0; }
           done
-          if [[ ! -f added_lines.json ]]; then
-            echo "added_lines.json missing"
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           # 3) Build payload.json (no secrets)
           DIFF_BASE64="$(tr -d '\n' < diff.b64)"
