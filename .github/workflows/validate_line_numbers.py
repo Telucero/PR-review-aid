@@ -13,13 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
-from rapidfuzz.distance import Levenshtein
 from sentence_transformers import SentenceTransformer
 
 
@@ -109,18 +107,6 @@ def cosine_sim_matrix(vec: np.ndarray, mat: np.ndarray) -> np.ndarray:
     if mat.shape[0] == 0:
         return np.zeros((0,), dtype=float)
     return (mat @ vec).astype(float)
-
-
-def levenshtein_sim(a: str, b: str) -> float:
-    a = a or ""
-    b = b or ""
-    if not a and not b:
-        return 1.0
-    max_len = max(len(a), len(b))
-    if max_len == 0:
-        return 1.0
-    dist = Levenshtein.distance(a, b)
-    return 1.0 - (dist / max_len)
 
 
 def load_payload(path: Path) -> Tuple[Dict, List[Dict]]:
@@ -219,6 +205,8 @@ def main() -> None:
 
     embeddings_cache: Dict[str, np.ndarray] = {}
 
+    debug_entries = []
+
     # Optional: log mismatch between upstream added_lines and recomputed
     if upstream_added:
         upstream_map = {item.get("file_path"): item.get("added_lines", []) for item in upstream_added if isinstance(item, dict)}
@@ -243,12 +231,24 @@ def main() -> None:
         body = comment.get("body") or ""
         match_text = choose_text(body, comment)
 
+        original_line = comment.get("line")
+
         if not file_path or file_path not in added_by_file:
             skipped.append(
                 {
                     "file_path": file_path or "",
                     "reason": "no_added_lines_for_file",
                     "body_preview": body[:200],
+                }
+            )
+            debug_entries.append(
+                {
+                    "path": file_path or "",
+                    "decision": "skipped:no_added_lines",
+                    "original_line": original_line,
+                    "best_match_line": None,
+                    "best_score": None,
+                    "top_candidates": [],
                 }
             )
             corrected.append(comment)
@@ -263,6 +263,16 @@ def main() -> None:
                     "body_preview": body[:200],
                 }
             )
+            debug_entries.append(
+                {
+                    "path": file_path,
+                    "decision": "skipped:empty_text_or_no_lines",
+                    "original_line": original_line,
+                    "best_match_line": None,
+                    "best_score": None,
+                    "top_candidates": [],
+                }
+            )
             corrected.append(comment)
             continue
 
@@ -275,21 +285,40 @@ def main() -> None:
         v = model.encode(match_text, convert_to_numpy=True, normalize_embeddings=True)
 
         sims_emb = cosine_sim_matrix(v, E)
-        sims_lev = np.array(
-            [levenshtein_sim(match_text, l["content"]) for l in added_lines],
-            dtype=float,
-        )
-        combined = 0.6 * sims_emb + 0.4 * sims_lev
-        best_idx = int(np.argmax(combined))
-        best_score = float(combined[best_idx])
+        combined = sims_emb
+        order = np.argsort(combined)[::-1]
+        top_candidates = []
+        for idx in order[: min(5, len(order))]:
+            top_candidates.append(
+                {
+                    "line": added_lines[int(idx)]["line_number"],
+                    "combined": float(combined[int(idx)]),
+                    "embedding": float(sims_emb[int(idx)]),
+                }
+            )
 
-        if math.isnan(best_score) or best_score < min_score:
+        best_idx = int(order[0])
+        best_score = float(combined[best_idx])
+        best_line_num = added_lines[best_idx]["line_number"]
+
+        if best_score < min_score:
             skipped.append(
                 {
                     "file_path": file_path,
                     "reason": "low_confidence",
                     "score": best_score,
                     "body_preview": body[:200],
+                    "best_match_line": best_line_num,
+                }
+            )
+            debug_entries.append(
+                {
+                    "path": file_path,
+                    "decision": "skipped:low_confidence",
+                    "original_line": original_line,
+                    "best_match_line": best_line_num,
+                    "best_score": best_score,
+                    "top_candidates": top_candidates,
                 }
             )
             corrected.append(comment)
@@ -299,7 +328,7 @@ def main() -> None:
         updated = dict(comment)
         updated["path"] = file_path
         updated.pop("position", None)  # prefer explicit line/side over position
-        updated["line"] = best_line["line_number"]
+        updated["line"] = best_line_num
         updated["side"] = updated.get("side") or "RIGHT"
         if "start_line" in updated or "start_side" in updated:
             updated["start_line"] = updated.get("start_line", updated["line"])
@@ -307,6 +336,16 @@ def main() -> None:
             if updated["start_line"] > updated["line"]:
                 updated["start_line"] = updated["line"]
         corrected.append(updated)
+        debug_entries.append(
+            {
+                "path": file_path,
+                "decision": "corrected" if original_line != best_line_num else "unchanged:best_match_same_line",
+                "original_line": original_line,
+                "best_match_line": best_line_num,
+                "best_score": best_score,
+                "top_candidates": top_candidates,
+            }
+        )
 
     raw_payload["prepared_comment_payloads"] = corrected
     raw_payload["skipped_comments"] = (
@@ -317,6 +356,7 @@ def main() -> None:
     raw_payload = update_payload(raw_payload, corrected)
 
     output_path.write_text(json.dumps(raw_payload, indent=2), encoding="utf-8")
+    Path("match_debug.json").write_text(json.dumps(debug_entries, indent=2), encoding="utf-8")
     print(f"Processed {len(comments)} comments; corrected {len(comments) - len(skipped)}, skipped {len(skipped)}.")
 
 
