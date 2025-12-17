@@ -657,7 +657,7 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pip
           pip install --no-cache-dir torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
-          pip install --no-cache-dir sentence-transformers==2.2.2 rapidfuzz==3.9.4 numpy==1.26.4
+          pip install --no-cache-dir huggingface_hub==0.20.3 sentence-transformers==2.2.2 rapidfuzz==3.9.4 numpy==1.26.4
 
       - name: Fetch PR files for validation
         if: ${{ steps.restore_payload.outputs.restored == 'true' }}
