@@ -669,135 +669,11 @@ jobs:
           set -euo pipefail
           gh api --paginate repos/${REPO}/pulls/${PR_NUMBER}/files --jq '.[]' | jq -s '.' > validation_files.json
 
-      - name: Inject test suggestions (for testing)
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, re
-          from pathlib import Path
-
-          files = json.loads(Path("validation_files.json").read_text() or "[]")
-          payload_raw = Path("response_body.json").read_text() or "null"
-          payload = json.loads(payload_raw)
-          if isinstance(payload, list):
-              payload = payload[0] if payload else {}
-
-          def parse_patch(patch: str):
-              added = []
-              old_line = 0
-              new_line = 0
-              eof_meta = "\\ No newline at end of file"
-              for raw in (patch or "").splitlines():
-                  if raw == eof_meta or raw.startswith("+++ ") or raw.startswith("--- "):
-                      continue
-                  if raw.startswith("@@"):
-                      m = re.search(r"@@ -(\d+),?\d* \+(\d+),?\d* @@", raw)
-                      if m:
-                          old_line = int(m.group(1)) - 1
-                          new_line = int(m.group(2)) - 1
-                      continue
-                  if raw.startswith("+") and not raw.startswith("+++"):
-                      added.append({"line_number": new_line + 1, "content": raw[1:] if raw[1:] != "" else "\n"})
-                      new_line += 1
-                  elif raw.startswith("-") and not raw.startswith("---"):
-                      old_line += 1
-                  else:
-                      old_line += 1
-                      new_line += 1
-              return added
-
-          picked = None
-          for f in files:
-              status = (f.get("status") or "").lower()
-              if status == "removed":
-                  continue
-              patch = f.get("patch") or ""
-              added = parse_patch(patch)
-              if len(added) >= 2:
-                  picked = {
-                      "file_path": f.get("filename"),
-                      "added": added,
-                  }
-                  break
-
-          if not picked:
-              print("No suitable file with added lines for injection; skipping.")
-              raise SystemExit(0)
-
-          added = picked["added"]
-          file_path = picked["file_path"]
-          max_line = max(a["line_number"] for a in added)
-
-          a0 = added[0]
-          a1 = added[1]
-          outside_line = max_line + 50
-          wrong_inside_line = a1["line_number"]
-
-          suggestions = [
-              {
-                  "path": file_path,
-                  "line": outside_line,
-                  "side": "RIGHT",
-                  "body": f"Test: outside line number\n```suggestion\n{a0['content']}\n```"
-              },
-              {
-                  "path": file_path,
-                  "line": wrong_inside_line,
-                  "side": "RIGHT",
-                  "body": f"Test: wrong line inside range (should be {a0['line_number']})\n```suggestion\n{a0['content']}\n```"
-              },
-              {
-                  "path": file_path,
-                  "line": a1["line_number"],
-                  "side": "RIGHT",
-                  "body": f"Test: swapped 1 (should target line {a0['line_number']})\n```suggestion\n{a0['content']}\n```"
-              },
-              {
-                  "path": file_path,
-                  "line": a0["line_number"],
-                  "side": "RIGHT",
-                  "body": f"Test: swapped 2 (should target line {a1['line_number']})\n```suggestion\n{a1['content']}\n```"
-              },
-          ]
-
-          def get_payload_entries(obj):
-              entries = obj.get("payload") or []
-              if isinstance(entries, str):
-                  try:
-                      entries = json.loads(entries)
-                  except json.JSONDecodeError:
-                      entries = []
-              if isinstance(entries, dict):
-                  return entries, [entries]
-              if isinstance(entries, list) and entries:
-                  return entries[0], entries
-              return {}, []
-
-          primary_payload, payload_list = get_payload_entries(payload)
-          existing = payload.get("prepared_comment_payloads") or primary_payload.get("prepared_comment_payloads") or []
-          if isinstance(existing, dict):
-              existing = [existing]
-          if not isinstance(existing, list):
-              existing = []
-
-          combined = existing + suggestions
-          payload["prepared_comment_payloads"] = combined
-          if payload_list:
-              payload_list[0]["prepared_comment_payloads"] = combined
-              payload["payload"] = payload_list
-          elif primary_payload:
-              primary_payload["prepared_comment_payloads"] = combined
-              payload["payload"] = primary_payload
-
-          Path("response_body.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-          print(f"Injected {len(suggestions)} test suggestions into response_body.json for {file_path}.")
-          PY
 
       - name: Validate and correct line numbers (transformer)
         if: ${{ steps.restore_payload.outputs.restored == 'true' }}
         env:
-          MIN_SCORE: ${{ vars.N8N_VALIDATION_MIN_SCORE || '0.55' }}
+          MIN_SCORE: ${{ vars.N8N_VALIDATION_MIN_SCORE || '0.20' }}
         run: |
           set -euo pipefail
           EXTRA_ARGS=()
@@ -810,6 +686,34 @@ jobs:
             --output response_body.json \
             --min-score "${MIN_SCORE}" \
             "${EXTRA_ARGS[@]}"
+
+      - name: Summarize validation results
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          debug_path = Path("match_debug.json")
+          if not debug_path.exists():
+              print("No match_debug.json found; skipping summary.")
+              raise SystemExit(0)
+
+          entries = json.loads(debug_path.read_text() or "[]")
+          total = len(entries)
+          corrected = sum(1 for e in entries if str(e.get("decision", "")).startswith("corrected"))
+          unchanged_same = sum(1 for e in entries if e.get("decision") == "unchanged:best_match_same_line")
+          low_conf_moves = sum(1 for e in entries if e.get("decision") == "corrected:low_confidence")
+          skipped_missing = sum(1 for e in entries if e.get("decision", "").startswith("skipped:"))
+
+          print(f"Validation summary: total={total}, moved={corrected}, unchanged_same_line={unchanged_same}, low_confidence_moves={low_conf_moves}, skipped={skipped_missing}")
+
+          for e in entries[:5]:
+              print(f"- {e.get('path','?')} orig={e.get('original_line')} -> best={e.get('best_match_line')} ({e.get('decision')}, score={e.get('best_score')})")
+          if total > 5:
+              print(f"... {total-5} more entries. See match_debug.json for full detail.")
+          PY
 
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads

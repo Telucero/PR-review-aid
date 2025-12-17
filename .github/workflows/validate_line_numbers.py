@@ -167,7 +167,7 @@ def main() -> None:
         "--min-score",
         type=float,
         default=0.55,
-        help="Minimum combined similarity score to accept a match (0-1).",
+        help="Informational threshold for confidence; matching will still snap to the best line.",
     )
     parser.add_argument(
         "--blocked-patterns",
@@ -198,6 +198,11 @@ def main() -> None:
             upstream_added = []
 
     raw_payload, comments = load_payload(response_path)
+    head_sha = (
+        raw_payload.get("head_sha")
+        or (raw_payload.get("payload") or {}).get("head_sha")
+        or None
+    )
 
     model = SentenceTransformer("all-MiniLM-L6-v2")
     skipped = []
@@ -207,14 +212,19 @@ def main() -> None:
 
     debug_entries = []
 
-    # Optional: log mismatch between upstream added_lines and recomputed
+    # Prefer upstream added_lines (from the same diff used to generate suggestions) when provided.
+    upstream_map = {}
     if upstream_added:
         upstream_map = {item.get("file_path"): item.get("added_lines", []) for item in upstream_added if isinstance(item, dict)}
+        added_by_file = upstream_map or added_by_file  # fall back to recomputed if empty
+
+    # Optional: log mismatch between upstream added_lines and recomputed
+    if upstream_map:
         mismatches = []
-        for fp, lines in added_by_file.items():
-            upstream_lines = upstream_map.get(fp) or []
-            upstream_nums = {l.get("line_number") for l in upstream_lines if isinstance(l, dict)}
-            recomputed_nums = {l.get("line_number") for l in lines}
+        recomputed_map = load_files(files_path, blocked_patterns)
+        for fp, lines in upstream_map.items():
+            upstream_nums = {l.get("line_number") for l in lines if isinstance(l, dict)}
+            recomputed_nums = {l.get("line_number") for l in recomputed_map.get(fp, [])}
             if upstream_nums != recomputed_nums:
                 mismatches.append(
                     {
@@ -301,30 +311,7 @@ def main() -> None:
         best_score = float(combined[best_idx])
         best_line_num = added_lines[best_idx]["line_number"]
 
-        if best_score < min_score:
-            skipped.append(
-                {
-                    "file_path": file_path,
-                    "reason": "low_confidence",
-                    "score": best_score,
-                    "body_preview": body[:200],
-                    "best_match_line": best_line_num,
-                }
-            )
-            debug_entries.append(
-                {
-                    "path": file_path,
-                    "decision": "skipped:low_confidence",
-                    "original_line": original_line,
-                    "best_match_line": best_line_num,
-                    "best_score": best_score,
-                    "top_candidates": top_candidates,
-                }
-            )
-            corrected.append(comment)
-            continue
-
-        best_line = added_lines[best_idx]
+        # Snap to best match regardless of confidence; mark decision.
         updated = dict(comment)
         updated["path"] = file_path
         updated.pop("position", None)  # prefer explicit line/side over position
@@ -335,11 +322,14 @@ def main() -> None:
             updated["start_side"] = updated.get("start_side", updated["side"])
             if updated["start_line"] > updated["line"]:
                 updated["start_line"] = updated["line"]
+        # Ensure commit_id aligns to head_sha when available
+        if head_sha and not updated.get("commit_id"):
+            updated["commit_id"] = head_sha
         corrected.append(updated)
         debug_entries.append(
             {
                 "path": file_path,
-                "decision": "corrected" if original_line != best_line_num else "unchanged:best_match_same_line",
+                "decision": "corrected:low_confidence" if best_score < min_score else ("corrected" if original_line != best_line_num else "unchanged:best_match_same_line"),
                 "original_line": original_line,
                 "best_match_line": best_line_num,
                 "best_score": best_score,
