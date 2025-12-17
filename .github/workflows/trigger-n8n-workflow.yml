@@ -27,6 +27,7 @@ jobs:
       pull-requests: read
     outputs:
       filtered_file_count: ${{ steps.filter_files.outputs.file_count }}
+      added_lines_b64: ${{ steps.added_lines_b64.outputs.added_lines_b64 }}
       should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
       diff_char_count: ${{ steps.diff_threshold.outputs.diff_char_count }}
       pr_number: ${{ steps.run_context.outputs.pr_number }}
@@ -235,6 +236,78 @@ jobs:
           gzip -c pr.diff > pr.diff.gz
           base64 -w 0 pr.diff.gz > diff.b64
 
+      - name: Build added_lines from patches
+        if: ${{ steps.filter_files.outputs.file_count != '0' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+
+          def parse_patch(patch: str):
+              added = []
+              old_line = 0
+              new_line = 0
+              eof_meta = "\\ No newline at end of file"
+              for raw in (patch or "").splitlines():
+                  if raw == eof_meta or raw.startswith("+++ ") or raw.startswith("--- "):
+                      continue
+                  if raw.startswith("@@"):
+                      m = re.search(r"@@ -(\d+),?\d* \+(\d+),?\d* @@", raw)
+                      if m:
+                          old_line = int(m.group(1)) - 1
+                          new_line = int(m.group(2)) - 1
+                      continue
+                  if raw.startswith("+") and not raw.startswith("+++"):
+                      added.append({
+                          "line_number": new_line + 1,
+                          "content": raw[1:] if raw[1:] != "" else "\n"
+                      })
+                      new_line += 1
+                  elif raw.startswith("-") and not raw.startswith("---"):
+                      old_line += 1
+                  else:
+                      old_line += 1
+                      new_line += 1
+              return added
+
+          try:
+              files = json.loads(Path("files.json").read_text())
+          except Exception:
+              files = []
+
+          added_files = []
+          for idx, item in enumerate(files):
+              filename = item.get("filename")
+              status = (item.get("status") or "").lower()
+              patch = item.get("patch")
+              if not filename or not isinstance(patch, str) or patch.strip() == "" or status == "removed":
+                  continue
+              added_lines = []
+              for i, line in enumerate(parse_patch(patch)):
+                  added_lines.append({
+                      "added_line_id": f"{idx}-a{i}",
+                      "line_number": line["line_number"],
+                      "content": line["content"]
+                  })
+              added_files.append({
+                  "fileIndex": idx,
+                  "file_path": filename,
+                  "status": status or "modified",
+                  "added_lines": added_lines
+              })
+
+          Path("added_lines.json").write_text(json.dumps(added_files, indent=2), encoding="utf-8")
+          PY
+
+      - name: Encode added_lines for downstream
+        id: added_lines_b64
+        if: ${{ steps.filter_files.outputs.file_count != '0' }}
+        run: |
+          set -euo pipefail
+          base64 -w 0 added_lines.json > added_lines.b64
+          echo "added_lines_b64=$(cat added_lines.b64)" >> "$GITHUB_OUTPUT"
+
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
         run: |
@@ -331,6 +404,11 @@ jobs:
           for f in pr.json files.json commits.json diff.b64; do
             [[ -f "$f" ]] || { echo "$f missing"; echo "error=true" >> "$GITHUB_OUTPUT"; exit 0; }
           done
+          if [[ ! -f added_lines.json ]]; then
+            echo "added_lines.json missing"
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # 3) Build payload.json (no secrets)
           DIFF_BASE64="$(tr -d '\n' < diff.b64)"
@@ -343,8 +421,9 @@ jobs:
             --slurpfile pr pr.json \
             --slurpfile files files.json \
             --slurpfile commits commits.json \
+            --slurpfile added added_lines.json \
             --arg diff_base64 "$DIFF_BASE64" \
-            '{pr: $pr[0], files: $files[0], commits: $commits[0], diff_base64: $diff_base64}' \
+            '{pr: $pr[0], files: $files[0], commits: $commits[0], added_lines: $added[0], diff_base64: $diff_base64}' \
             > payload.json
 
           # 4) Size guard
@@ -553,17 +632,68 @@ jobs:
 
       # Step 14: Restore response payload from upstream output
       - name: Restore response payload
+        id: restore_payload
+        if: ${{ needs.gather-and-send.outputs.response_payload != '' }}
         run: |
           set -euo pipefail
           payload='${{ needs.gather-and-send.outputs.response_payload }}'
           if [ -z "$payload" ]; then
-            echo Response payload missing; exiting.
+            echo "Response payload missing; exiting."
             exit 1
           fi
           printf '%s' "$payload" | base64 -d > response_body.json
+          echo "restored=true" >> "$GITHUB_OUTPUT"
+
+      - name: Restore upstream added_lines
+        if: ${{ needs.gather-and-send.outputs.added_lines_b64 != '' }}
+        run: |
+          set -euo pipefail
+          printf '%s' '${{ needs.gather-and-send.outputs.added_lines_b64 }}' | base64 -d > upstream_added_lines.json
+
+      - name: Setup Python for validation
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install transformer validation deps
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-cache-dir sentence-transformers==2.2.2 rapidfuzz==3.9.4 numpy==1.26.4
+
+      - name: Fetch PR files for validation
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.gather-and-send.outputs.pr_number }}
+          REPO: ${{ needs.gather-and-send.outputs.repository || github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate repos/${REPO}/pulls/${PR_NUMBER}/files --jq '.[]' | jq -s '.' > validation_files.json
+
+      - name: Validate and correct line numbers (transformer)
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        env:
+          MIN_SCORE: ${{ vars.N8N_VALIDATION_MIN_SCORE || '0.55' }}
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [ -f upstream_added_lines.json ]; then
+            EXTRA_ARGS+=(--upstream-added-lines upstream_added_lines.json)
+          fi
+          python .github/workflows/validate_line_numbers.py \
+            --files validation_files.json \
+            --response response_body.json \
+            --output response_body.json \
+            --min-score "${MIN_SCORE}" \
+            "${EXTRA_ARGS[@]}"
 
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -658,6 +788,7 @@ jobs:
 
       # Step 17: Post grouped inline suggestions
       - name: Post batched inline suggestions
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -732,6 +863,7 @@ jobs:
 
       # Step 18: Publish any verification reviews
       - name: Post verification comments
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
