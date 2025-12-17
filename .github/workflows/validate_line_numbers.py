@@ -198,11 +198,29 @@ def main() -> None:
             upstream_added = []
 
     raw_payload, comments = load_payload(response_path)
-    head_sha = (
-        raw_payload.get("head_sha")
-        or (raw_payload.get("payload") or {}).get("head_sha")
-        or None
-    )
+
+    # Extract head_sha robustly (payload may be str/dict/list)
+    def _safe_payload(obj):
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, str):
+            try:
+                parsed = json.loads(obj)
+                return parsed if isinstance(parsed, (dict, list)) else {}
+            except json.JSONDecodeError:
+                return {}
+        if isinstance(obj, list) and obj:
+            return obj[0] if isinstance(obj[0], dict) else {}
+        return {}
+
+    payload_field = raw_payload.get("payload") if isinstance(raw_payload, dict) else None
+    payload_parsed = _safe_payload(payload_field)
+
+    head_sha = None
+    if isinstance(raw_payload, dict):
+        head_sha = raw_payload.get("head_sha") or raw_payload.get("headSha")
+    if not head_sha and isinstance(payload_parsed, dict):
+        head_sha = payload_parsed.get("head_sha") or payload_parsed.get("headSha")
 
     model = SentenceTransformer("all-MiniLM-L6-v2")
     skipped = []
