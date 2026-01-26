@@ -2,17 +2,22 @@ name: Nathan
 
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
         description: Pull request number to process (maintainer-triggered runs)
-        required: true
+        required: false
+        type: string
+      pr_selector:
+        description: PR URL or branch name (used when pr_number is not provided)
+        required: false
         type: string
 
 permissions:
   contents: read
   pull-requests: read
+  checks: write
 
 
 jobs:
@@ -25,11 +30,14 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      checks: write
     outputs:
-      filtered_file_count: ${{ steps.filter_files.outputs.file_count }}
-      added_lines_b64: ${{ steps.added_lines_b64.outputs.added_lines_b64 }}
-      should_send: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
-      diff_char_count: ${{ steps.diff_threshold.outputs.diff_char_count }}
+      triggered: ${{ steps.trigger_phrase.outputs.triggered || 'false' }}
+      commit_sha: ${{ steps.trigger_phrase.outputs.commit_sha || '' }}
+      filtered_file_count: ${{ steps.filter_files.outputs.file_count || '0' }}
+      filtered_addition_count: ${{ steps.filter_files.outputs.addition_count || '0' }}
+      should_send: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && (steps.filter_files.outputs.addition_count || '0') != '0' && steps.diff_threshold.outputs.skip_send != 'true' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
+      diff_char_count: ${{ steps.diff_threshold.outputs.diff_char_count || '0' }}
       pr_number: ${{ steps.run_context.outputs.pr_number }}
       repository: ${{ steps.run_context.outputs.repository }}
       run_url: ${{ steps.run_context.outputs.run_url }}
@@ -39,24 +47,14 @@ jobs:
       send_error: ${{ steps.send_payload.outputs.error }}
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+      PR_SELECTOR: ${{ github.event.inputs.pr_selector }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
       MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '1000' }}
     steps:
-      # Step 1: Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
-
       # Step 2: Generate unique run token
       - name: Generate Run UUID
         id: uuid
         run: echo run_token=$(uuidgen) >> $GITHUB_OUTPUT
-
-      - name: Capture run context
-        id: run_context
-        run: |
-          echo pr_number=${PR_NUMBER} >> $GITHUB_OUTPUT
-          echo repository=${GITHUB_REPOSITORY} >> $GITHUB_OUTPUT
-          echo run_url=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} >> $GITHUB_OUTPUT
 
       # Step 2b: Require dispatcher to have access
       - name: Validate dispatcher permissions
@@ -82,8 +80,169 @@ jobs:
               ;;
           esac
 
+      - name: Resolve PR number (manual dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${PR_NUMBER:-}" ]]; then
+            echo "PR_NUMBER already set to ${PR_NUMBER}"
+            exit 0
+          fi
+
+          if [[ -z "${PR_SELECTOR:-}" ]]; then
+            echo "No PR provided. Supply workflow_dispatch input pr_number or pr_selector (PR URL or branch name)." >&2
+            exit 1
+          fi
+
+          RESOLVED_PR_NUMBER="$(gh pr view "${PR_SELECTOR}" --repo "${REPO}" --json number --jq '.number')"
+          if [[ -z "${RESOLVED_PR_NUMBER:-}" ]]; then
+            echo "Unable to resolve PR number from pr_selector='${PR_SELECTOR}'." >&2
+            exit 1
+          fi
+
+          echo "PR_NUMBER=${RESOLVED_PR_NUMBER}" >> "$GITHUB_ENV"
+          echo "Resolved PR_NUMBER=${RESOLVED_PR_NUMBER} from pr_selector='${PR_SELECTOR}'."
+
+      - name: Check trigger phrase (+Nathan)
+        id: trigger_phrase
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          commits_json=""
+          for attempt in 1 2 3; do
+            if commits_json="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" 2>/dev/null | jq -s 'add' 2>/dev/null)"; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ -z "${commits_json:-}" ]]; then
+            echo "⚠️ Unable to fetch PR commits to evaluate trigger phrase; skipping run gracefully."
+            echo "triggered=false" >> "$GITHUB_OUTPUT"
+            echo "commit_sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sha="$(printf '%s' "$commits_json" | jq -r '.[-1].sha // ""')"
+          msg="$(printf '%s' "$commits_json" | jq -r '.[-1].commit.message // ""')"
+
+          triggered="$(printf '%s' "$commits_json" | jq -r 'any(.[].commit.message?; (ascii_downcase | contains(\"+nathan\")))')"
+          if [[ "$triggered" == "true" ]]; then
+            echo "triggered=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "triggered=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "commit_sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "COMMIT_SHA=$sha" >> "$GITHUB_ENV"
+
+          first_line="$(printf '%s\n' "$msg" | head -n1 | tr -d '\r')"
+          echo "Latest PR commit: ${sha:-unknown} — ${first_line:-<no message>}"
+
+      - name: Not triggered (missing +Nathan)
+        if: ${{ steps.trigger_phrase.outputs.triggered != 'true' }}
+        run: |
+          echo "Skipping: latest PR commit message does not contain '+Nathan' or '+nathan'."
+
+      - name: One-shot gate (check-run)
+        id: oneshot
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ env.COMMIT_SHA }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CHECK_NAME="n8n-trigger"
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=" >> "$GITHUB_OUTPUT"
+          echo "check_run_id=" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "${COMMIT_SHA:-}" ]]; then
+            echo "⚠️ Missing COMMIT_SHA; skipping run gracefully."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=missing_commit_sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          existing=""
+          for attempt in 1 2 3; do
+            if existing="$(gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/commits/${COMMIT_SHA}/check-runs" 2>/dev/null)"; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ -n "${existing:-}" ]]; then
+            status="$(printf '%s' "$existing" | jq -r --arg n "$CHECK_NAME" '.check_runs[]? | select(.name==$n) | .status' | tail -n1)"
+            conclusion="$(printf '%s' "$existing" | jq -r --arg n "$CHECK_NAME" '.check_runs[]? | select(.name==$n) | .conclusion // ""' | tail -n1)"
+
+            if [[ -n "${status:-}" ]]; then
+              if [[ "$status" == "in_progress" || "$status" == "queued" ]]; then
+                echo "Already running for ${COMMIT_SHA} (check-run '${CHECK_NAME}' is ${status})."
+                echo "proceed=false" >> "$GITHUB_OUTPUT"
+                echo "skip_reason=already_running" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [[ "$status" == "completed" && "${conclusion:-}" != "failure" ]]; then
+                echo "Already processed for ${COMMIT_SHA} (check-run '${CHECK_NAME}' conclusion='${conclusion:-unknown}')."
+                echo "proceed=false" >> "$GITHUB_OUTPUT"
+                echo "skip_reason=already_processed" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [[ "$status" == "completed" && "${conclusion:-}" == "failure" ]]; then
+                echo "Previous run failed for ${COMMIT_SHA}; allowing retry."
+              fi
+            fi
+          else
+            echo "⚠️ Unable to query existing check-runs; proceeding without one-shot enforcement."
+            exit 0
+          fi
+
+          started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          check_id=""
+          for attempt in 1 2 3; do
+            if check_id="$(
+              gh api -X POST -H "Accept: application/vnd.github+json" "repos/${REPO}/check-runs" \
+                -f name="${CHECK_NAME}" \
+                -f head_sha="${COMMIT_SHA}" \
+                -f status="in_progress" \
+                -f started_at="${started_at}" \
+                --jq '.id' 2>/dev/null
+            )"; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ -z "${check_id:-}" ]]; then
+            echo "⚠️ Unable to create check-run; proceeding without one-shot enforcement."
+            exit 0
+          fi
+
+          echo "check_run_id=${check_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Capture run context
+        id: run_context
+        run: |
+          echo pr_number=${PR_NUMBER} >> $GITHUB_OUTPUT
+          echo repository=${GITHUB_REPOSITORY} >> $GITHUB_OUTPUT
+          echo run_url=${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} >> $GITHUB_OUTPUT
+
       # Step 3: Pre-flight validation
       - name: Validate setup
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' }}
         run: |
           if [[ -z ${{ secrets.GITHUB_TOKEN }} ]]; then
             echo Missing GITHUB_TOKEN secret.
@@ -106,37 +265,110 @@ jobs:
 
       # Step 4: Fetch PR metadata, files, commits
       - name: Fetch PR metadata
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' }}
         run: |
           gh api repos/${{ github.repository }}/pulls/${PR_NUMBER} > pr.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch PR files
+      - name: Guard PR head SHA and set base SHA
+        id: sha_guard
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' }}
+        shell: bash
         run: |
-          gh api --paginate repos/${{ github.repository }}/pulls/${PR_NUMBER}/files --jq '.[]' | jq -s '.' > files.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          set -euo pipefail
+          base_sha="$(jq -r '.base.sha // ""' pr.json)"
+          head_sha="$(jq -r '.head.sha // ""' pr.json)"
+          expected="${COMMIT_SHA:-}"
 
-      - name: Fetch PR commits
+          if [[ -z "${base_sha:-}" || -z "${head_sha:-}" || -z "${expected:-}" ]]; then
+            echo "sha_ok=false" >> "$GITHUB_OUTPUT"
+            echo "Missing base/head/expected SHA; skipping gracefully."
+            exit 0
+          fi
+
+          if [[ "$head_sha" != "$expected" ]]; then
+            echo "sha_ok=false" >> "$GITHUB_OUTPUT"
+            echo "Head SHA changed (pr.head.sha=$head_sha expected=$expected); skipping gracefully."
+            exit 0
+          fi
+
+          echo "sha_ok=true" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "BASE_SHA=$base_sha" >> "$GITHUB_ENV"
+
+      # Step 1 (moved): Checkout repository at the triggering commit SHA
+      - name: Checkout repository
+        id: checkout
+        continue-on-error: true
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' }}
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: ${{ env.COMMIT_SHA }}
+
+      - name: Checkout failed
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome != 'success' }}
         run: |
-          gh api repos/${{ github.repository }}/pulls/${PR_NUMBER}/commits > commits.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Skipping: unable to checkout ref ${COMMIT_SHA:-<missing>}."
 
-      # Step 5: Download raw PR diff
+      - name: Fetch PR files and commits (stable compare)
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ env.BASE_SHA }}
+          COMMIT_SHA: ${{ env.COMMIT_SHA }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          compare_json=""
+          for attempt in 1 2 3; do
+            if compare_json="$(gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/compare/${BASE_SHA}...${COMMIT_SHA}" 2>/dev/null)"; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ -z "${compare_json:-}" ]]; then
+            echo "Unable to fetch compare JSON; skipping gracefully."
+            exit 0
+          fi
+
+          printf '%s' "$compare_json" | jq '.files // []' > files.json
+          printf '%s' "$compare_json" | jq '.commits // []' > commits.json
+
+      # Step 5: Download stable diff for BASE_SHA...COMMIT_SHA
       - name: Fetch PR diff
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ env.BASE_SHA }}
+          COMMIT_SHA: ${{ env.COMMIT_SHA }}
+        shell: bash
         run: |
-          curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --retry 2 --retry-all-errors \
-            --no-progress-meter --http1.1 --noproxy '*' \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3.diff" \
-            https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER} \
-            > pr.diff
+          set -euo pipefail
+
+          ok=false
+          for attempt in 1 2 3; do
+            if gh api -H "Accept: application/vnd.github.v3.diff" "repos/${REPO}/compare/${BASE_SHA}...${COMMIT_SHA}" > pr.diff 2>/dev/null; then
+              ok=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ "$ok" != "true" ]]; then
+            echo "Unable to fetch compare diff; skipping gracefully."
+            exit 0
+          fi
 
       - name: Filter excluded files
         id: filter_files
         shell: bash
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
         run: |
           set -euo pipefail
 
@@ -168,6 +400,7 @@ jobs:
           pattern_llms   = re.compile(r'llms', re.IGNORECASE)
 
           filtered = []
+          total_additions = 0
           for item in data:
               if not isinstance(item, dict):
                   continue
@@ -178,18 +411,26 @@ jobs:
               if pattern_ai_dir.search(filename) or pattern_llms.search(filename):
                   continue
               filtered.append(item)
+              additions = item.get("additions")
+              if isinstance(additions, int):
+                  total_additions += additions
 
           files_path.write_text(json.dumps(filtered), encoding="utf-8")
           Path("file_count.txt").write_text(str(len(filtered)), encoding="utf-8")
+          Path("addition_count.txt").write_text(str(total_additions), encoding="utf-8")
           PY
               FILE_COUNT=$(<file_count.txt)
+              ADDITION_COUNT=$(<addition_count.txt)
               {
                 echo "file_count=${FILE_COUNT}"
+                echo "addition_count=${ADDITION_COUNT}"
               } >> "$GITHUB_OUTPUT"
               echo "Remaining files after filter: ${FILE_COUNT}"
+              echo "Total additions after filter: ${ADDITION_COUNT}"
 
       # Step 7: Strip excluded paths from diff payload
       - name: Filter diff to excluded paths
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
         run: |
           python3 - <<'PY'
           import pathlib, textwrap; exec(textwrap.dedent('''\
@@ -232,84 +473,109 @@ jobs:
 
       # Step 8: Compress & encode diff for payload
       - name: Compress filtered diff
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
         run: |
           gzip -c pr.diff > pr.diff.gz
           base64 -w 0 pr.diff.gz > diff.b64
 
-      - name: Build added_lines from patches
-        if: ${{ steps.filter_files.outputs.file_count != '0' }}
+      - name: Build added_lines from diff
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, re
+          import re
           from pathlib import Path
 
-          def parse_patch(patch: str):
-              added = []
-              old_line = 0
-              new_line = 0
-              eof_meta = "\\ No newline at end of file"
-              for raw in (patch or "").splitlines():
-                  if raw == eof_meta or raw.startswith("+++ ") or raw.startswith("--- "):
-                      continue
-                  if raw.startswith("@@"):
-                      m = re.search(r"@@ -(\d+),?\d* \+(\d+),?\d* @@", raw)
-                      if m:
-                          old_line = int(m.group(1)) - 1
-                          new_line = int(m.group(2)) - 1
-                      continue
-                  if raw.startswith("+") and not raw.startswith("+++"):
-                      added.append({
+          diff_path = Path("pr.diff")
+          if not diff_path.exists():
+              raise SystemExit("pr.diff missing")
+
+          # Parse unified diff and extract added lines with their new-file line numbers.
+          added_by_file = {}
+          current_file = None
+          in_hunk = False
+          new_line = 0
+
+          diff_git_re = re.compile(r"^diff --git a/(.+?) b/(.+?)\\s*$")
+          hunk_re = re.compile(r"^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@")
+
+          for raw in diff_path.read_text(encoding="utf-8", errors="replace").splitlines():
+              m = diff_git_re.match(raw)
+              if m:
+                  current_file = m.group(2)
+                  added_by_file.setdefault(current_file, [])
+                  in_hunk = False
+                  new_line = 0
+                  continue
+
+              if current_file is None:
+                  continue
+
+              if raw.startswith("Binary files ") or raw.startswith("GIT binary patch"):
+                  in_hunk = False
+                  continue
+
+              hm = hunk_re.match(raw)
+              if hm:
+                  in_hunk = True
+                  new_line = int(hm.group(1)) - 1
+                  continue
+
+              if not in_hunk:
+                  continue
+
+              if raw.startswith("\\ No newline at end of file"):
+                  continue
+              if raw.startswith("+++ ") or raw.startswith("--- "):
+                  continue
+
+              if raw.startswith("+") and not raw.startswith("+++"):
+                  added_by_file[current_file].append(
+                      {
                           "line_number": new_line + 1,
-                          "content": raw[1:] if raw[1:] != "" else "\n"
-                      })
-                      new_line += 1
-                  elif raw.startswith("-") and not raw.startswith("---"):
-                      old_line += 1
-                  else:
-                      old_line += 1
-                      new_line += 1
-              return added
+                          "content": raw[1:] if raw[1:] != "" else "\\n",
+                      }
+                  )
+                  new_line += 1
+              elif raw.startswith("-") and not raw.startswith("---"):
+                  # deletion: only old line advances
+                  continue
+              else:
+                  # context line: both sides advance
+                  new_line += 1
 
-          try:
-              files = json.loads(Path("files.json").read_text())
-          except Exception:
-              files = []
-
+          # Convert to added_lines schema (used in n8n payload)
           added_files = []
-          for idx, item in enumerate(files):
-              filename = item.get("filename")
-              status = (item.get("status") or "").lower()
-              patch = item.get("patch")
-              if not filename or not isinstance(patch, str) or patch.strip() == "" or status == "removed":
+          file_index = 0
+          for file_path, lines in added_by_file.items():
+              if not lines:
                   continue
               added_lines = []
-              for i, line in enumerate(parse_patch(patch)):
-                  added_lines.append({
-                      "added_line_id": f"{idx}-a{i}",
-                      "line_number": line["line_number"],
-                      "content": line["content"]
-                  })
-              added_files.append({
-                  "fileIndex": idx,
-                  "file_path": filename,
-                  "status": status or "modified",
-                  "added_lines": added_lines
-              })
+              for i, line in enumerate(lines):
+                  added_lines.append(
+                      {
+                          "added_line_id": f"{file_index}-a{i}",
+                          "line_number": line["line_number"],
+                          "content": line["content"],
+                      }
+                  )
+              added_files.append(
+                  {
+                      "fileIndex": file_index,
+                      "file_path": file_path,
+                      "status": "modified",
+                      "added_lines": added_lines,
+                  }
+              )
+              file_index += 1
 
+          import json
           Path("added_lines.json").write_text(json.dumps(added_files, indent=2), encoding="utf-8")
           PY
 
-      - name: Encode added_lines for downstream
-        id: added_lines_b64
-        if: ${{ steps.filter_files.outputs.file_count != '0' }}
-        run: |
-          set -euo pipefail
-          base64 -w 0 added_lines.json > added_lines.b64
-          echo "added_lines_b64=$(cat added_lines.b64)" >> "$GITHUB_OUTPUT"
-
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
         run: |
           echo PR metadata size: $(stat -c%s pr.json) bytes
           echo Files metadata size: $(stat -c%s files.json) bytes
@@ -319,6 +585,7 @@ jobs:
       - name: Evaluate diff char threshold
         id: diff_threshold
         shell: bash
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
         run: |
           set -euo pipefail
 
@@ -345,24 +612,25 @@ jobs:
 
       # Step 9c: Short-circuit when below threshold
       - name: Diff below threshold
-        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send == 'true' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' && steps.diff_threshold.outputs.skip_send == 'true' }}
         run: |
           echo ℹ️ Diff char count (${{ steps.diff_threshold.outputs.diff_char_count }}) is below threshold (${{ steps.diff_threshold.outputs.threshold }}). Skipping n8n send.
 
       - name: Generate Run UUID
         id: run_uuid
         shell: bash
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
         run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
 
       - name: Mask run token
-        if: ${{ steps.run_uuid.outputs.run_token != '' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.run_uuid.outputs.run_token != '' }}
         env:
           RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}
         run: echo "::add-mask::$RUN_TOKEN"
         
       - name: Combine and send to n8n webhook 
         id: send_payload
-        if: ${{ steps.filter_files.outputs.file_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' && steps.diff_threshold.outputs.skip_send != 'true' }}
         env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
           # Reused as HMAC secret ONLY (not sent in any header directly)
@@ -412,13 +680,15 @@ jobs:
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          COMMIT_SHA_VALUE="$(printf '%s' "${COMMIT_SHA:-}" | tr -d '\r\n')"
           jq -n \
             --slurpfile pr pr.json \
             --slurpfile files files.json \
             --slurpfile commits commits.json \
             --slurpfile added added_lines.json \
             --arg diff_base64 "$DIFF_BASE64" \
-            '{pr: $pr[0], files: $files[0], commits: $commits[0], added_lines: $added[0], diff_base64: $diff_base64}' \
+            --arg commit_sha "$COMMIT_SHA_VALUE" \
+            '{pr: $pr[0], files: $files[0], commits: $commits[0], added_lines: $added[0], diff_base64: $diff_base64, commit_sha: $commit_sha}' \
             > payload.json
 
           # 4) Size guard
@@ -594,8 +864,8 @@ jobs:
 
       # Step 11: Short-circuit when nothing qualifies
       - name: No eligible files to send
-        if: ${{ steps.filter_files.outputs.file_count == '0' }}
-        run: echo ℹ️ No eligible files after filtering llms/.ai paths. Skipping n8n send.
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count == '0' }}
+        run: echo ℹ️ No eligible additions after filtering llms/.ai paths. Skipping n8n send.
 
       - name: Securely delete diff artifacts
         if: ${{ always() }}
@@ -611,11 +881,69 @@ jobs:
             fi
           done
 
+      - name: Complete one-shot check-run
+        if: ${{ always() && steps.oneshot.outputs.check_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          CHECK_RUN_ID: ${{ steps.oneshot.outputs.check_run_id }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          COMMIT_SHA: ${{ env.COMMIT_SHA }}
+          RUN_URL: ${{ steps.run_context.outputs.run_url }}
+          PROCEED: ${{ steps.oneshot.outputs.proceed }}
+          SKIP_REASON: ${{ steps.oneshot.outputs.skip_reason }}
+          SHA_OK: ${{ steps.sha_guard.outputs.sha_ok }}
+          CHECKOUT_OK: ${{ steps.checkout.outcome == 'success' && 'true' || 'false' }}
+          ADDITION_COUNT: ${{ steps.filter_files.outputs.addition_count || '0' }}
+          DIFF_SKIP: ${{ steps.diff_threshold.outputs.skip_send || 'false' }}
+          SEND_EXECUTED: ${{ steps.send_payload.outputs.executed || 'false' }}
+          SEND_ERROR: ${{ steps.send_payload.outputs.error || 'false' }}
+          SEND_CANCELLED: ${{ steps.send_payload.outputs.cancelled || 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          conclusion="neutral"
+          title="n8n trigger"
+          reason=""
+
+          if [[ "${PROCEED}" != "true" ]]; then
+            reason="${SKIP_REASON:-not_proceeding}"
+          elif [[ "${SHA_OK}" != "true" ]]; then
+            reason="head_sha_changed_or_missing"
+          elif [[ "${CHECKOUT_OK}" != "true" ]]; then
+            reason="checkout_failed"
+          elif [[ "${ADDITION_COUNT}" == "0" ]]; then
+            reason="no_eligible_additions"
+          elif [[ "${DIFF_SKIP}" == "true" ]]; then
+            reason="diff_below_threshold"
+          elif [[ "${SEND_CANCELLED}" == "true" ]]; then
+            reason="cancelled"
+          elif [[ "${SEND_ERROR}" == "true" ]]; then
+            conclusion="failure"
+            reason="send_error"
+          elif [[ "${SEND_EXECUTED}" == "true" ]]; then
+            conclusion="success"
+            reason="sent"
+          else
+            reason="skipped"
+          fi
+
+          completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          summary="$(printf 'PR: #%s\nCommit: %s\nRun: %s\nResult: %s\n' "${PR_NUMBER:-unknown}" "${COMMIT_SHA:-unknown}" "${RUN_URL:-unknown}" "${reason}")"
+
+          gh api -X PATCH -H "Accept: application/vnd.github+json" "repos/${REPO}/check-runs/${CHECK_RUN_ID}" \
+            -f status="completed" \
+            -f completed_at="${completed_at}" \
+            -f conclusion="${conclusion}" \
+            -f output[title]="${title}" \
+            -f output[summary]="${summary}" >/dev/null
+
   receive-validate-and-comment:
     runs-on: ubuntu-latest
     needs:
       - gather-and-send
-    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.filtered_file_count != '0' && needs.gather-and-send.outputs.should_send == 'true' }}
+    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.triggered == 'true' && needs.gather-and-send.outputs.filtered_addition_count != '0' && needs.gather-and-send.outputs.should_send == 'true' }}
     environment: n8n-receiving
     permissions:
       contents: read
@@ -624,6 +952,8 @@ jobs:
       # Step 13: Re-checkout repo (fresh workspace)
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: ${{ needs.gather-and-send.outputs.commit_sha }}
 
       # Step 14: Restore response payload from upstream output
       - name: Restore response payload
@@ -638,82 +968,6 @@ jobs:
           fi
           printf '%s' "$payload" | base64 -d > response_body.json
           echo "restored=true" >> "$GITHUB_OUTPUT"
-
-      - name: Restore upstream added_lines
-        if: ${{ needs.gather-and-send.outputs.added_lines_b64 != '' }}
-        run: |
-          set -euo pipefail
-          printf '%s' '${{ needs.gather-and-send.outputs.added_lines_b64 }}' | base64 -d > upstream_added_lines.json
-
-      - name: Setup Python for validation
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install transformer validation deps
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        run: |
-          set -euo pipefail
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
-          pip install --no-cache-dir huggingface_hub==0.20.3 sentence-transformers==2.2.2 numpy==1.26.4
-
-      - name: Fetch PR files for validation
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ needs.gather-and-send.outputs.pr_number }}
-          REPO: ${{ needs.gather-and-send.outputs.repository || github.repository }}
-        run: |
-          set -euo pipefail
-          gh api --paginate repos/${REPO}/pulls/${PR_NUMBER}/files --jq '.[]' | jq -s '.' > validation_files.json
-
-
-      - name: Validate and correct line numbers (transformer)
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        env:
-          MIN_SCORE: ${{ vars.N8N_VALIDATION_MIN_SCORE || '0.20' }}
-        run: |
-          set -euo pipefail
-          EXTRA_ARGS=()
-          if [ -f upstream_added_lines.json ]; then
-            EXTRA_ARGS+=(--upstream-added-lines upstream_added_lines.json)
-          fi
-          python .github/workflows/validate_line_numbers.py \
-            --files validation_files.json \
-            --response response_body.json \
-            --output response_body.json \
-            --min-score "${MIN_SCORE}" \
-            "${EXTRA_ARGS[@]}"
-
-      - name: Summarize validation results
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import json
-
-          debug_path = Path("match_debug.json")
-          if not debug_path.exists():
-              print("No match_debug.json found; skipping summary.")
-              raise SystemExit(0)
-
-          entries = json.loads(debug_path.read_text() or "[]")
-          total = len(entries)
-          corrected = sum(1 for e in entries if str(e.get("decision", "")).startswith("corrected"))
-          unchanged_same = sum(1 for e in entries if e.get("decision") == "unchanged:best_match_same_line")
-          low_conf_moves = sum(1 for e in entries if e.get("decision") == "corrected:low_confidence")
-          skipped_missing = sum(1 for e in entries if e.get("decision", "").startswith("skipped:"))
-
-          print(f"Validation summary: total={total}, moved={corrected}, unchanged_same_line={unchanged_same}, low_confidence_moves={low_conf_moves}, skipped={skipped_missing}")
-
-          for e in entries[:5]:
-              print(f"- {e.get('path','?')} orig={e.get('original_line')} -> best={e.get('best_match_line')} ({e.get('decision')}, score={e.get('best_score')})")
-          if total > 5:
-              print(f"... {total-5} more entries. See match_debug.json for full detail.")
-          PY
 
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
