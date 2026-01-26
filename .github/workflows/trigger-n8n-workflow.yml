@@ -135,7 +135,7 @@ jobs:
           sha="$(printf '%s' "$commits_json" | jq -r '.[-1].sha // ""')"
           msg="$(printf '%s' "$commits_json" | jq -r '.[-1].commit.message // ""')"
 
-          triggered="$(printf '%s' "$commits_json" | jq -r 'any(.[].commit.message?; (ascii_downcase | contains(\"+nathan\")))')"
+          triggered="$(printf '%s' "$commits_json" | jq -r --arg needle "+nathan" 'any(.[].commit.message?; (ascii_downcase | contains($needle)))')"
           if [[ "$triggered" == "true" ]]; then
             echo "triggered=true" >> "$GITHUB_OUTPUT"
           else
