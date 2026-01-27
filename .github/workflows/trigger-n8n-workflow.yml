@@ -108,7 +108,7 @@ jobs:
           echo "PR_NUMBER=${RESOLVED_PR_NUMBER}" >> "$GITHUB_ENV"
           echo "Resolved PR_NUMBER=${RESOLVED_PR_NUMBER} from pr_selector='${PR_SELECTOR}'."
 
-      - name: Check trigger phrase (+Nathan)
+      - name: Check trigger phrase on latest commit (+Nathan)
         id: trigger_phrase
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -135,7 +135,13 @@ jobs:
           sha="$(printf '%s' "$commits_json" | jq -r '.[-1].sha // ""')"
           msg="$(printf '%s' "$commits_json" | jq -r '.[-1].commit.message // ""')"
 
-          triggered="$(printf '%s' "$commits_json" | jq -r --arg needle "+nathan" 'any(.[].commit.message?; (ascii_downcase | contains($needle)))')"
+          shopt -s nocasematch
+          if [[ "$msg" == *"+nathan"* ]]; then
+            triggered="true"
+          else
+            triggered="false"
+          fi
+          shopt -u nocasematch
           if [[ "$triggered" == "true" ]]; then
             echo "triggered=true" >> "$GITHUB_OUTPUT"
           else
@@ -267,9 +273,10 @@ jobs:
       - name: Fetch PR metadata
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' }}
         run: |
-          gh api repos/${{ github.repository }}/pulls/${PR_NUMBER} > pr.json
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/pr.json"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
 
       - name: Guard PR head SHA and set base SHA
         id: sha_guard
@@ -277,8 +284,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base_sha="$(jq -r '.base.sha // ""' pr.json)"
-          head_sha="$(jq -r '.head.sha // ""' pr.json)"
+          pr_json_path="${RUNNER_TEMP}/pr.json"
+          if [[ ! -f "$pr_json_path" ]]; then
+            echo "sha_ok=false" >> "$GITHUB_OUTPUT"
+            echo "PR metadata missing at $pr_json_path; skipping gracefully."
+            exit 0
+          fi
+
+          base_sha="$(jq -r '.base.sha // ""' "$pr_json_path")"
+          head_sha="$(jq -r '.head.sha // ""' "$pr_json_path")"
           expected="${COMMIT_SHA:-}"
 
           if [[ -z "${base_sha:-}" || -z "${head_sha:-}" || -z "${expected:-}" ]]; then
@@ -311,6 +325,18 @@ jobs:
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome != 'success' }}
         run: |
           echo "Skipping: unable to checkout ref ${COMMIT_SHA:-<missing>}."
+
+      - name: Materialize PR metadata file
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_json_path="${RUNNER_TEMP}/pr.json"
+          if [[ ! -f "$pr_json_path" ]]; then
+            echo "PR metadata missing at $pr_json_path"
+            exit 1
+          fi
+          cp "$pr_json_path" pr.json
 
       - name: Fetch PR files and commits (stable compare)
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
