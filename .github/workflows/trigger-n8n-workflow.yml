@@ -42,6 +42,8 @@ jobs:
       repository: ${{ steps.run_context.outputs.repository }}
       run_url: ${{ steps.run_context.outputs.run_url }}
       response_payload: ${{ steps.send_payload.outputs.response_payload }}
+      response_signature: ${{ steps.send_payload.outputs.response_signature }}
+      response_body_raw: ${{ steps.send_payload.outputs.response_body_raw }}
       cancelled: ${{ steps.send_payload.outputs.cancelled }}
       send_executed: ${{ steps.send_payload.outputs.executed }}
       send_error: ${{ steps.send_payload.outputs.error }}
@@ -118,7 +120,7 @@ jobs:
           set -euo pipefail
 
           commits_json=""
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             if commits_json="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" 2>/dev/null | jq -s 'add' 2>/dev/null)"; then
               break
             fi
@@ -183,7 +185,7 @@ jobs:
           fi
 
           existing=""
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             if existing="$(gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/commits/${COMMIT_SHA}/check-runs" 2>/dev/null)"; then
               break
             fi
@@ -218,7 +220,7 @@ jobs:
 
           started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           check_id=""
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             if check_id="$(
               gh api -X POST -H "Accept: application/vnd.github+json" "repos/${REPO}/check-runs" \
                 -f name="${CHECK_NAME}" \
@@ -350,7 +352,7 @@ jobs:
           set -euo pipefail
 
           compare_json=""
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             if compare_json="$(gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/compare/${BASE_SHA}...${COMMIT_SHA}" 2>/dev/null)"; then
               break
             fi
@@ -378,7 +380,7 @@ jobs:
           set -euo pipefail
 
           ok=false
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             if gh api -H "Accept: application/vnd.github.v3.diff" "repos/${REPO}/compare/${BASE_SHA}...${COMMIT_SHA}" > pr.diff 2>/dev/null; then
               ok=true
               break
@@ -662,7 +664,6 @@ jobs:
           # Reused as HMAC secret ONLY (not sent in any header directly)
           N8N_SENDING_TOKEN: ${{ secrets.N8N_SENDING_TOKEN }}
           RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}   # UUID, not GITHUB_TOKEN
-          N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
           N8N_ALLOWED_HOST: ${{ secrets.N8N_ALLOWED_HOST }}
         shell: bash
         run: |
@@ -672,6 +673,8 @@ jobs:
             echo "cancelled=false"
             echo "executed=true"
             echo "error=false"
+            echo "response_signature="
+            echo "response_body_raw="
           } >> "$GITHUB_OUTPUT"
 
           # 1) Validate URL & host
@@ -741,7 +744,7 @@ jobs:
           trap 'rm -f "$HEADER_FILE"' EXIT
 
           RESPONSE="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --retry 2 --retry-all-errors \
+            --retry 1 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
             -H "Content-Type: application/json" \
@@ -764,6 +767,9 @@ jobs:
           echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
           echo "n8n responded with status: $HTTP_STATUS"
 
+          RAW_BODY_B64="$(printf '%s' "$HTTP_BODY" | base64 -w 0)"
+          echo "response_body_raw=${RAW_BODY_B64}" >> "$GITHUB_OUTPUT"
+
           if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
             echo "n8n workflow failed (HTTP $HTTP_STATUS)"
             echo "error=true" >> "$GITHUB_OUTPUT"
@@ -781,8 +787,7 @@ jobs:
           STATUS="$(jq -r '.status // empty' <<< "$HTTP_BODY")"
           MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY")"
 
-          if [[ -n "${N8N_RECEIVING_TOKEN:-}" ]]; then
-            HEADER_SIG="$(python3 - <<'PY' "$HEADER_FILE"
+          HEADER_SIG="$(python3 - <<'PY' "$HEADER_FILE"
           import sys
           from pathlib import Path
 
@@ -795,48 +800,7 @@ jobs:
           print(sig, end="")
           PY
           )"
-            if [[ -n "$HEADER_SIG" ]]; then
-              PAYLOAD_FOR_SIG="$(
-                HTTP_BODY_VAR="$HTTP_BODY" python3 - <<'PY'
-          import json
-          import os
-
-          body = os.environ.get("HTTP_BODY_VAR", "")
-          try:
-              data = json.loads(body)
-          except json.JSONDecodeError:
-              data = None
-
-          payload = data.get("payload") if isinstance(data, dict) else None
-          if (
-              not isinstance(payload, list)
-              or not payload
-              or not isinstance(payload[0], dict)
-              or not isinstance(payload[0].get("payload"), str)
-          ):
-              raise SystemExit(0)
-
-          print(payload[0]["payload"], end="")
-          PY
-              )"
-              if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
-                PAYLOAD_FOR_SIG="$HTTP_BODY"
-              fi
-              EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-              if [[ "$HEADER_SIG" != "$EXPECTED_SIG" ]]; then
-                BODY_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-                if [[ "$HEADER_SIG" != "$BODY_SIG" ]]; then
-                  echo "Response signature mismatch."
-                  echo "error=true" >> "$GITHUB_OUTPUT"
-                  exit 0
-                fi
-              fi
-            else
-              echo "Missing X-Response-Signature header."
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
+          echo "response_signature=${HEADER_SIG}" >> "$GITHUB_OUTPUT"
 
           if [[ "$STATUS" == "cancelled" ]]; then
             echo "n8n workflow reported cancellation; skipping downstream processing."
@@ -995,6 +959,77 @@ jobs:
           printf '%s' "$payload" | base64 -d > response_body.json
           echo "restored=true" >> "$GITHUB_OUTPUT"
 
+      - name: Restore raw response payload (for signature verification)
+        id: restore_raw_payload
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && secrets.N8N_RECEIVING_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          payload='${{ needs.gather-and-send.outputs.response_body_raw }}'
+          if [ -z "$payload" ]; then
+            echo "Raw response payload missing; exiting."
+            exit 1
+          fi
+          printf '%s' "$payload" | base64 -d > response_body_raw.json
+          echo "restored=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify n8n response signature
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.restore_raw_payload.outputs.restored == 'true' && secrets.N8N_RECEIVING_TOKEN != '' }}
+        env:
+          N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
+          RESPONSE_SIG: ${{ needs.gather-and-send.outputs.response_signature }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${RESPONSE_SIG:-}" ]]; then
+            echo "Missing X-Response-Signature value from upstream job."
+            exit 1
+          fi
+
+          if ! command -v openssl >/dev/null 2>&1; then
+            echo "openssl not available for response signature verification."
+            exit 1
+          fi
+
+          HTTP_BODY="$(cat response_body_raw.json)"
+
+          PAYLOAD_FOR_SIG="$(
+            HTTP_BODY_VAR="$HTTP_BODY" python3 - <<'PY'
+          import json
+          import os
+
+          body = os.environ.get("HTTP_BODY_VAR", "")
+          try:
+              data = json.loads(body)
+          except json.JSONDecodeError:
+              data = None
+
+          payload = data.get("payload") if isinstance(data, dict) else None
+          if (
+              not isinstance(payload, list)
+              or not payload
+              or not isinstance(payload[0], dict)
+              or not isinstance(payload[0].get("payload"), str)
+          ):
+              raise SystemExit(0)
+
+          print(payload[0]["payload"], end="")
+          PY
+          )"
+
+          if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
+            PAYLOAD_FOR_SIG="$HTTP_BODY"
+          fi
+
+          EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+          if [[ "$RESPONSE_SIG" != "$EXPECTED_SIG" ]]; then
+            BODY_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+            if [[ "$RESPONSE_SIG" != "$BODY_SIG" ]]; then
+              echo "Response signature mismatch."
+              exit 1
+            fi
+          fi
+
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
         if: ${{ steps.restore_payload.outputs.restored == 'true' }}
@@ -1132,7 +1167,7 @@ jobs:
             fi
 
             RESP=$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-              --retry 2 --retry-all-errors \
+              --retry 1 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -w '%{http_code}' -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -1229,7 +1264,7 @@ jobs:
 
             JSON_PAYLOAD=$(jq -nc --arg b "$BODY" '{body:$b}')
             RESP=$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-              --retry 2 --retry-all-errors \
+              --retry 1 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -w '%{http_code}' -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -1330,7 +1365,7 @@ jobs:
             '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}')
 
           curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --retry 2 --retry-all-errors \
+            --retry 1 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -X POST \
             -H "Content-Type: application/json" \
