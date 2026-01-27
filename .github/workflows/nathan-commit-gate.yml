@@ -15,8 +15,34 @@ jobs:
     if: ${{ github.event.pull_request != null && github.event.pull_request.head.repo.fork == false }}
     runs-on: ubuntu-latest
     steps:
+      - name: Validate dispatcher permissions (maintainers only)
+        id: perm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          permission="$(gh api -H "Accept: application/vnd.github+json" \
+            "repos/${REPO}/collaborators/${ACTOR}/permission" \
+            --jq '.permission // ""' 2>/dev/null || true)"
+
+          case "${permission}" in
+            admin|maintain)
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              echo "✅ ${ACTOR} has ${permission} permission."
+              ;;
+            *)
+              echo "allowed=false" >> "$GITHUB_OUTPUT"
+              echo "⏭️ ${ACTOR} is not a maintainer (permission='${permission:-none}'); skipping dispatch."
+              ;;
+          esac
+
       - name: Check latest commit message (+Nathan)
         id: gate
+        if: ${{ steps.perm.outputs.allowed == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -41,7 +67,7 @@ jobs:
           echo "Latest PR commit: ${sha:-unknown} — ${first_line:-<no message>}"
 
       - name: Dispatch Nathan workflow
-        if: ${{ steps.gate.outputs.triggered == 'true' }}
+        if: ${{ steps.perm.outputs.allowed == 'true' && steps.gate.outputs.triggered == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
