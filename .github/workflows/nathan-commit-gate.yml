@@ -45,18 +45,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${DEFAULT_BRANCH:-}" ]]; then
-            echo "Missing default branch; cannot dispatch."
+          if [[ -z "${HEAD_REF:-}" ]]; then
+            echo "Missing PR head ref; cannot dispatch."
             exit 1
           fi
 
-          echo "Dispatching trigger-n8n-workflow.yml for PR #${PR_NUMBER} on ref ${DEFAULT_BRANCH}"
+          echo "Dispatching trigger-n8n-workflow.yml for PR #${PR_NUMBER} on ref ${HEAD_REF}"
           gh api -X POST "repos/${REPO}/actions/workflows/trigger-n8n-workflow.yml/dispatches" \
-            -f ref="${DEFAULT_BRANCH}" \
+            -f ref="${HEAD_REF}" \
             -f inputs[pr_number]="${PR_NUMBER}"
