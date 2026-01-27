@@ -1,12 +1,10 @@
 name: Nathan
 
 on:
-  pull_request:
-    types: [synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Pull request number to process (maintainer-triggered runs)
+        description: PR number to process (maintainer-triggered runs)
         required: false
         type: string
       pr_selector:
@@ -22,9 +20,8 @@ permissions:
 
 jobs:
   gather-and-send:
-    # Manual dispatch is allowed, but we verify the actor has write access before continuing.
-    # Pull request runs still skip forks to avoid leaking secrets.
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request != null && github.event.pull_request.head.repo.fork == false) }}
+    # Runs via workflow_dispatch only (dispatched by the commit-gate workflow or a maintainer).
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     environment: n8n-sending
     permissions:
@@ -44,13 +41,14 @@ jobs:
       response_payload: ${{ steps.send_payload.outputs.response_payload }}
       response_signature: ${{ steps.send_payload.outputs.response_signature }}
       response_body_raw: ${{ steps.send_payload.outputs.response_body_raw }}
+      response_body_len: ${{ steps.send_payload.outputs.response_body_len || '0' }}
       cancelled: ${{ steps.send_payload.outputs.cancelled }}
       send_executed: ${{ steps.send_payload.outputs.executed }}
       send_error: ${{ steps.send_payload.outputs.error }}
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+      PR_NUMBER: ${{ github.event.inputs.pr_number }}
       PR_SELECTOR: ${{ github.event.inputs.pr_selector }}
-      IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+      IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
       MIN_DIFF_CHAR_THRESHOLD: ${{ vars.N8N_MIN_DIFF_CHAR_THRESHOLD || '1000' }}
     steps:
       # Step 2: Generate unique run token
@@ -60,7 +58,7 @@ jobs:
 
       # Step 2b: Require dispatcher to have access
       - name: Validate dispatcher permissions
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -172,7 +170,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CHECK_NAME="n8n-trigger"
+          CHECK_NAME="send lock"
           echo "proceed=true" >> "$GITHUB_OUTPUT"
           echo "skip_reason=" >> "$GITHUB_OUTPUT"
           echo "check_run_id=" >> "$GITHUB_OUTPUT"
@@ -195,6 +193,7 @@ jobs:
           if [[ -n "${existing:-}" ]]; then
             status="$(printf '%s' "$existing" | jq -r --arg n "$CHECK_NAME" '.check_runs[]? | select(.name==$n) | .status' | tail -n1)"
             conclusion="$(printf '%s' "$existing" | jq -r --arg n "$CHECK_NAME" '.check_runs[]? | select(.name==$n) | .conclusion // ""' | tail -n1)"
+            summary="$(printf '%s' "$existing" | jq -r --arg n "$CHECK_NAME" '.check_runs[]? | select(.name==$n) | .output.summary // ""' | tail -n1)"
 
             if [[ -n "${status:-}" ]]; then
               if [[ "$status" == "in_progress" || "$status" == "queued" ]]; then
@@ -204,10 +203,15 @@ jobs:
                 exit 0
               fi
               if [[ "$status" == "completed" && "${conclusion:-}" != "failure" ]]; then
-                echo "Already processed for ${COMMIT_SHA} (check-run '${CHECK_NAME}' conclusion='${conclusion:-unknown}')."
-                echo "proceed=false" >> "$GITHUB_OUTPUT"
-                echo "skip_reason=already_processed" >> "$GITHUB_OUTPUT"
-                exit 0
+                summary_one_line="$(printf '%s' "${summary:-}" | tr -d '\r')"
+                if [[ "${conclusion:-}" == "skipped" && "$summary_one_line" == *"Result: send_error"* ]]; then
+                  echo "Previous run hit send_error for ${COMMIT_SHA}; allowing retry."
+                else
+                  echo "Already processed for ${COMMIT_SHA} (check-run '${CHECK_NAME}' conclusion='${conclusion:-unknown}')."
+                  echo "proceed=false" >> "$GITHUB_OUTPUT"
+                  echo "skip_reason=already_processed" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
               fi
               if [[ "$status" == "completed" && "${conclusion:-}" == "failure" ]]; then
                 echo "Previous run failed for ${COMMIT_SHA}; allowing retry."
@@ -675,6 +679,7 @@ jobs:
             echo "error=false"
             echo "response_signature="
             echo "response_body_raw="
+            echo "response_body_len=0"
           } >> "$GITHUB_OUTPUT"
 
           # 1) Validate URL & host
@@ -767,6 +772,8 @@ jobs:
           echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
           echo "n8n responded with status: $HTTP_STATUS"
 
+          RAW_BODY_LEN="$(printf '%s' "$HTTP_BODY" | wc -c | tr -d '[:space:]')"
+          echo "response_body_len=${RAW_BODY_LEN:-0}" >> "$GITHUB_OUTPUT"
           RAW_BODY_B64="$(printf '%s' "$HTTP_BODY" | base64 -w 0)"
           echo "response_body_raw=${RAW_BODY_B64}" >> "$GITHUB_OUTPUT"
 
@@ -843,7 +850,50 @@ jobs:
           BODY_B64=$(printf '%s' "$SANITIZED_BODY" | base64 -w 0)
           echo "response_payload=${BODY_B64}" >> "$GITHUB_OUTPUT"
 
+          # Persist response for downstream job via artifact (job outputs are often suppressed as "may contain secret").
+          printf '%s' "$SANITIZED_BODY" > response_body_sanitized.json
+          printf '%s' "$HEADER_SIG" > response_signature.txt
+          PAYLOAD_FOR_SIG="$(
+            HTTP_BODY_VAR="$HTTP_BODY" python3 - <<'PY'
+          import json
+          import os
+
+          body = os.environ.get("HTTP_BODY_VAR", "")
+          try:
+              data = json.loads(body)
+          except json.JSONDecodeError:
+              data = None
+
+          payload = data.get("payload") if isinstance(data, dict) else None
+          if (
+              not isinstance(payload, list)
+              or not payload
+              or not isinstance(payload[0], dict)
+              or not isinstance(payload[0].get("payload"), str)
+          ):
+              raise SystemExit(0)
+
+          print(payload[0]["payload"], end="")
+          PY
+          )"
+          if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
+            PAYLOAD_FOR_SIG="$HTTP_BODY"
+          fi
+          printf '%s' "$PAYLOAD_FOR_SIG" > payload_for_sig.txt
+
           echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload n8n response artifact
+        if: ${{ steps.send_payload.outputs.executed == 'true' && steps.send_payload.outputs.error != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-response
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            response_body_sanitized.json
+            response_signature.txt
+            payload_for_sig.txt
 
 
       - name: Enforce n8n send failure
@@ -894,7 +944,7 @@ jobs:
           set -euo pipefail
 
           conclusion="neutral"
-          title="n8n trigger"
+          title="send lock"
           reason=""
 
           if [[ "${PROCEED}" != "true" ]]; then
@@ -910,7 +960,7 @@ jobs:
           elif [[ "${SEND_CANCELLED}" == "true" ]]; then
             reason="cancelled"
           elif [[ "${SEND_ERROR}" == "true" ]]; then
-            conclusion="failure"
+            conclusion="skipped"
             reason="send_error"
           elif [[ "${SEND_EXECUTED}" == "true" ]]; then
             conclusion="success"
@@ -933,25 +983,24 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - gather-and-send
-    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.triggered == 'true' && needs.gather-and-send.outputs.filtered_addition_count != '0' && needs.gather-and-send.outputs.should_send == 'true' }}
+    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.triggered == 'true' && needs.gather-and-send.outputs.send_executed == 'true' }}
     environment: n8n-receiving
     permissions:
       contents: read
       pull-requests: write
     steps:
-      # Step 13: Re-checkout repo (fresh workspace)
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Download n8n response artifact
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ needs.gather-and-send.outputs.commit_sha }}
+          name: n8n-response
 
       - name: Post ack when n8n response is empty
-        if: ${{ needs.gather-and-send.outputs.response_payload == '' }}
+        if: ${{ needs.gather-and-send.outputs.response_body_len == '0' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ needs.gather-and-send.outputs.repository }}
-          PR: ${{ needs.gather-and-send.outputs.pr_number }}
-          RUN_URL: ${{ needs.gather-and-send.outputs.run_url }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.inputs.pr_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_SHA: ${{ needs.gather-and-send.outputs.commit_sha }}
         shell: bash
         run: |
@@ -985,45 +1034,39 @@ jobs:
       # Step 14: Restore response payload from upstream output
       - name: Restore response payload
         id: restore_payload
-        if: ${{ needs.gather-and-send.outputs.response_payload != '' }}
+        if: ${{ needs.gather-and-send.outputs.response_body_len != '0' }}
         run: |
           set -euo pipefail
-          payload='${{ needs.gather-and-send.outputs.response_payload }}'
-          if [ -z "$payload" ]; then
-            echo "Response payload missing; exiting."
+          if [[ ! -f response_body_sanitized.json ]]; then
+            echo "response_body_sanitized.json missing; exiting."
             exit 1
           fi
-          printf '%s' "$payload" | base64 -d > response_body.json
-          echo "restored=true" >> "$GITHUB_OUTPUT"
-
-      - name: Restore raw response payload (for signature verification)
-        id: restore_raw_payload
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && needs.gather-and-send.outputs.response_body_raw != '' }}
-        run: |
-          set -euo pipefail
-          payload='${{ needs.gather-and-send.outputs.response_body_raw }}'
-          if [ -z "$payload" ]; then
-            echo "Raw response payload missing; exiting."
-            exit 1
+          if [[ ! -s response_body_sanitized.json ]]; then
+            echo "response_body_sanitized.json empty; nothing to process."
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          printf '%s' "$payload" | base64 -d > response_body_raw.json
+          cp response_body_sanitized.json response_body.json
           echo "restored=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify n8n response signature
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.restore_raw_payload.outputs.restored == 'true' && needs.gather-and-send.outputs.response_signature != '' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
         env:
           N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
-          RESPONSE_SIG: ${{ needs.gather-and-send.outputs.response_signature }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${RESPONSE_SIG:-}" ]]; then
-            echo "Missing X-Response-Signature value from upstream job."
-            exit 1
-          fi
           if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
             echo "Missing N8N_RECEIVING_TOKEN secret in the n8n-receiving environment."
+            exit 1
+          fi
+          if [[ ! -s response_signature.txt ]]; then
+            echo "Missing response_signature.txt from artifact."
+            exit 1
+          fi
+          if [[ ! -f payload_for_sig.txt ]]; then
+            echo "Missing payload_for_sig.txt from artifact."
             exit 1
           fi
 
@@ -1032,43 +1075,13 @@ jobs:
             exit 1
           fi
 
-          HTTP_BODY="$(cat response_body_raw.json)"
-
-          PAYLOAD_FOR_SIG="$(
-            HTTP_BODY_VAR="$HTTP_BODY" python3 - <<'PY'
-          import json
-          import os
-
-          body = os.environ.get("HTTP_BODY_VAR", "")
-          try:
-              data = json.loads(body)
-          except json.JSONDecodeError:
-              data = None
-
-          payload = data.get("payload") if isinstance(data, dict) else None
-          if (
-              not isinstance(payload, list)
-              or not payload
-              or not isinstance(payload[0], dict)
-              or not isinstance(payload[0].get("payload"), str)
-          ):
-              raise SystemExit(0)
-
-          print(payload[0]["payload"], end="")
-          PY
-          )"
-
-          if [[ -z "$PAYLOAD_FOR_SIG" ]]; then
-            PAYLOAD_FOR_SIG="$HTTP_BODY"
-          fi
+          RESPONSE_SIG="$(cat response_signature.txt)"
+          PAYLOAD_FOR_SIG="$(cat payload_for_sig.txt)"
 
           EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
           if [[ "$RESPONSE_SIG" != "$EXPECTED_SIG" ]]; then
-            BODY_SIG="sha256=$(printf '%s' "$HTTP_BODY" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-            if [[ "$RESPONSE_SIG" != "$BODY_SIG" ]]; then
-              echo "Response signature mismatch."
-              exit 1
-            fi
+            echo "Response signature mismatch."
+            exit 1
           fi
 
       # Step 16: Prepare grouped review batches
