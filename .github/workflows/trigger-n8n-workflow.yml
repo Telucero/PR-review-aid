@@ -164,6 +164,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ env.COMMIT_SHA }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         shell: bash
         run: |
           set -euo pipefail
@@ -172,6 +173,9 @@ jobs:
           echo "proceed=true" >> "$GITHUB_OUTPUT"
           echo "skip_reason=" >> "$GITHUB_OUTPUT"
           echo "check_run_id=" >> "$GITHUB_OUTPUT"
+
+          attempt_num="${RUN_ATTEMPT:-1}"
+          if [[ ! "$attempt_num" =~ ^[0-9]+$ ]]; then attempt_num=1; fi
 
           if [[ -z "${COMMIT_SHA:-}" ]]; then
             echo "⚠️ Missing COMMIT_SHA; skipping run gracefully."
@@ -204,6 +208,8 @@ jobs:
                 summary_one_line="$(printf '%s' "${summary:-}" | tr -d '\r')"
                 if [[ "${conclusion:-}" == "skipped" && "$summary_one_line" == *"Result: send_error"* ]]; then
                   echo "Previous run hit send_error for ${COMMIT_SHA}; allowing retry."
+                elif [[ "$attempt_num" -gt 1 ]]; then
+                  echo "Rerun attempt ${attempt_num} for ${COMMIT_SHA}; allowing retry."
                 else
                   echo "Already processed for ${COMMIT_SHA} (check-run '${CHECK_NAME}' conclusion='${conclusion:-unknown}')."
                   echo "proceed=false" >> "$GITHUB_OUTPUT"
