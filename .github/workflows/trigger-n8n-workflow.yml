@@ -87,24 +87,31 @@ jobs:
         run: |
           set -euo pipefail
 
+          selector="${PR_SELECTOR:-}"
+
+          # If pr_number was provided but isn't numeric (e.g., a URL), treat it like pr_selector.
           if [[ -n "${PR_NUMBER:-}" ]]; then
-            echo "PR_NUMBER already set to ${PR_NUMBER}"
-            exit 0
+            if [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+              echo "PR_NUMBER already set to ${PR_NUMBER}"
+              exit 0
+            fi
+            selector="${PR_NUMBER}"
+            echo "PR_NUMBER input is not numeric; treating it as pr_selector='${selector}'."
           fi
 
-          if [[ -z "${PR_SELECTOR:-}" ]]; then
+          if [[ -z "${selector:-}" ]]; then
             echo "No PR provided. Supply workflow_dispatch input pr_number or pr_selector (PR URL or branch name)." >&2
             exit 1
           fi
 
-          RESOLVED_PR_NUMBER="$(gh pr view "${PR_SELECTOR}" --repo "${REPO}" --json number --jq '.number')"
+          RESOLVED_PR_NUMBER="$(gh pr view "${selector}" --repo "${REPO}" --json number --jq '.number')"
           if [[ -z "${RESOLVED_PR_NUMBER:-}" ]]; then
-            echo "Unable to resolve PR number from pr_selector='${PR_SELECTOR}'." >&2
+            echo "Unable to resolve PR number from pr_selector='${selector}'." >&2
             exit 1
           fi
 
           echo "PR_NUMBER=${RESOLVED_PR_NUMBER}" >> "$GITHUB_ENV"
-          echo "Resolved PR_NUMBER=${RESOLVED_PR_NUMBER} from pr_selector='${PR_SELECTOR}'."
+          echo "Resolved PR_NUMBER=${RESOLVED_PR_NUMBER} from pr_selector='${selector}'."
 
       - name: Check trigger phrase on latest commit (+Nathan)
         id: trigger_phrase
@@ -140,6 +147,9 @@ jobs:
             triggered="false"
           fi
           shopt -u nocasematch
+          if [[ "${IS_MANUAL_RUN}" == "true" ]]; then
+            triggered="true"
+          fi
           if [[ "$triggered" == "true" ]]; then
             echo "triggered=true" >> "$GITHUB_OUTPUT"
           else
@@ -173,6 +183,11 @@ jobs:
           echo "proceed=true" >> "$GITHUB_OUTPUT"
           echo "skip_reason=" >> "$GITHUB_OUTPUT"
           echo "check_run_id=" >> "$GITHUB_OUTPUT"
+
+          if [[ "${IS_MANUAL_RUN}" == "true" ]]; then
+            echo "Manual dispatch: bypassing send lock."
+            exit 0
+          fi
 
           attempt_num="${RUN_ATTEMPT:-1}"
           if [[ ! "$attempt_num" =~ ^[0-9]+$ ]]; then attempt_num=1; fi
@@ -304,6 +319,12 @@ jobs:
           base_sha="$(jq -r '.base.sha // ""' "$pr_json_path")"
           head_sha="$(jq -r '.head.sha // ""' "$pr_json_path")"
           expected="${COMMIT_SHA:-}"
+
+          if [[ "${IS_MANUAL_RUN}" == "true" && -n "${head_sha:-}" ]]; then
+            echo "Manual dispatch: using current PR head SHA ${head_sha}."
+            expected="${head_sha}"
+            echo "COMMIT_SHA=${head_sha}" >> "$GITHUB_ENV"
+          fi
 
           if [[ -z "${base_sha:-}" || -z "${head_sha:-}" || -z "${expected:-}" ]]; then
             echo "sha_ok=false" >> "$GITHUB_OUTPUT"
