@@ -850,7 +850,7 @@ jobs:
         if: ${{ steps.send_payload.outputs.executed == 'true' && steps.send_payload.outputs.error != 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: n8n-response
+          name: n8n-response-${{ github.run_attempt }}
           if-no-files-found: error
           retention-days: 1
           path: |
@@ -939,11 +939,45 @@ jobs:
             -f output[title]="${title}" \
             -f output[summary]="${summary}" >/dev/null
 
+  detect-n8n-response:
+    runs-on: ubuntu-latest
+    needs:
+      - gather-and-send
+    if: ${{ needs.gather-and-send.result == 'success' }}
+    permissions:
+      actions: read
+    outputs:
+      has_response_artifact: ${{ steps.detect.outputs.has_response_artifact }}
+    steps:
+      - name: Detect n8n response artifact
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          ARTIFACT_NAME: n8n-response-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          has="$(
+            gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" 2>/dev/null \
+              | jq -r --arg name "${ARTIFACT_NAME}" 'any(.artifacts[]?; .name == $name and (.expired | not))' 2>/dev/null \
+              || echo false
+          )"
+
+          if [[ "$has" == "true" ]]; then
+            echo "has_response_artifact=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_response_artifact=false" >> "$GITHUB_OUTPUT"
+          fi
+
   receive-validate-and-comment:
     runs-on: ubuntu-latest
     needs:
       - gather-and-send
-    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.triggered == 'true' && needs.gather-and-send.outputs.send_executed == 'true' }}
+      - detect-n8n-response
+    if: ${{ needs.gather-and-send.result == 'success' && needs.detect-n8n-response.outputs.has_response_artifact == 'true' }}
     environment: n8n-receiving
     permissions:
       contents: read
@@ -952,16 +986,122 @@ jobs:
       - name: Download n8n response artifact
         uses: actions/download-artifact@v4
         with:
-          name: n8n-response
+          name: n8n-response-${{ github.run_attempt }}
 
-      - name: Post ack when n8n response is empty
-        if: ${{ needs.gather-and-send.outputs.response_body_len == '0' }}
+      - name: Restore response payload
+        id: restore_payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f response_body_sanitized.json ]]; then
+            echo "response_body_sanitized.json missing; nothing to process."
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ ! -s response_body_sanitized.json ]]; then
+            echo "response_body_sanitized.json empty; nothing to process."
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp response_body_sanitized.json response_body.json
+          echo "restored=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify n8n response signature
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        env:
+          N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
+            echo "Missing N8N_RECEIVING_TOKEN secret in the n8n-receiving environment."
+            exit 1
+          fi
+          if [[ ! -s response_signature.txt ]]; then
+            echo "Missing response signature from artifact; skipping response signature verification."
+            exit 0
+          fi
+          if [[ ! -f payload_for_sig.txt ]]; then
+            echo "Missing payload_for_sig.txt from artifact; skipping response signature verification."
+            exit 0
+          fi
+
+          if ! command -v openssl >/dev/null 2>&1; then
+            echo "openssl not available for response signature verification."
+            exit 1
+          fi
+
+          RESPONSE_SIG="$(cat response_signature.txt)"
+          PAYLOAD_FOR_SIG="$(cat payload_for_sig.txt)"
+
+          EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
+          if [[ "$RESPONSE_SIG" != "$EXPECTED_SIG" ]]; then
+            echo "Response signature mismatch."
+            exit 1
+          fi
+
+      - name: Summarize n8n response
+        id: response_summary
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw = Path("response_body.json").read_text(encoding="utf-8", errors="replace").strip() or "null"
+          data = json.loads(raw)
+          if isinstance(data, list):
+              data = data[0] if data else {}
+
+          payload_entries = data.get("payload")
+          if isinstance(payload_entries, str):
+              try:
+                  payload_entries = json.loads(payload_entries)
+              except json.JSONDecodeError:
+                  payload_entries = None
+
+          primary = None
+          if isinstance(payload_entries, list) and payload_entries:
+              primary = payload_entries[0]
+          elif isinstance(payload_entries, dict):
+              primary = payload_entries
+          else:
+              primary = {}
+
+          prepared = (
+              data.get("prepared_comment_payloads")
+              or primary.get("prepared_comment_payloads")
+              or []
+          )
+          reviews = data.get("reviews") or primary.get("reviews") or []
+
+          has_suggestions = bool(prepared) or bool(reviews)
+          head_sha = (
+              data.get("head_sha")
+              or primary.get("head_sha")
+              or ""
+          )
+
+          out = Path("response_summary.json")
+          out.write_text(json.dumps({"has_suggestions": has_suggestions, "head_sha": head_sha}, indent=2), encoding="utf-8")
+          PY
+
+          HAS="$(jq -r '.has_suggestions' response_summary.json 2>/dev/null || echo false)"
+          SHA="$(jq -r '.head_sha // ""' response_summary.json 2>/dev/null || echo "")"
+          echo "has_suggestions=${HAS}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Post ack when n8n returned no suggestions
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.response_summary.outputs.has_suggestions != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.inputs.pr_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_SHA: ${{ needs.gather-and-send.outputs.commit_sha }}
+          COMMIT_SHA: ${{ steps.response_summary.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -991,62 +1131,9 @@ jobs:
             "https://api.github.com/repos/${OWNER}/${NAME}/pulls/${PR}/reviews" \
             -d "$PAYLOAD" >/dev/null
 
-      # Step 14: Restore response payload from upstream output
-      - name: Restore response payload
-        id: restore_payload
-        if: ${{ needs.gather-and-send.outputs.response_body_len != '0' }}
-        run: |
-          set -euo pipefail
-          if [[ ! -f response_body_sanitized.json ]]; then
-            echo "response_body_sanitized.json missing; exiting."
-            exit 1
-          fi
-          if [[ ! -s response_body_sanitized.json ]]; then
-            echo "response_body_sanitized.json empty; nothing to process."
-            echo "restored=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          cp response_body_sanitized.json response_body.json
-          echo "restored=true" >> "$GITHUB_OUTPUT"
-
-      - name: Verify n8n response signature
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
-        env:
-          N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
-            echo "Missing N8N_RECEIVING_TOKEN secret in the n8n-receiving environment."
-            exit 1
-          fi
-          if [[ ! -s response_signature.txt ]]; then
-            echo "Missing response_signature.txt from artifact."
-            exit 1
-          fi
-          if [[ ! -f payload_for_sig.txt ]]; then
-            echo "Missing payload_for_sig.txt from artifact."
-            exit 1
-          fi
-
-          if ! command -v openssl >/dev/null 2>&1; then
-            echo "openssl not available for response signature verification."
-            exit 1
-          fi
-
-          RESPONSE_SIG="$(cat response_signature.txt)"
-          PAYLOAD_FOR_SIG="$(cat payload_for_sig.txt)"
-
-          EXPECTED_SIG="sha256=$(printf '%s' "$PAYLOAD_FOR_SIG" | openssl dgst -binary -sha256 -hmac "$N8N_RECEIVING_TOKEN" | base64 | tr -d '\n')"
-          if [[ "$RESPONSE_SIG" != "$EXPECTED_SIG" ]]; then
-            echo "Response signature mismatch."
-            exit 1
-          fi
-
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.response_summary.outputs.has_suggestions == 'true' }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
