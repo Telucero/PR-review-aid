@@ -1014,10 +1014,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
-            echo "Missing N8N_RECEIVING_TOKEN secret in the n8n-receiving environment."
-            exit 1
-          fi
           if [[ ! -s response_signature.txt ]]; then
             echo "Missing response signature from artifact; skipping response signature verification."
             exit 0
@@ -1025,6 +1021,10 @@ jobs:
           if [[ ! -f payload_for_sig.txt ]]; then
             echo "Missing payload_for_sig.txt from artifact; skipping response signature verification."
             exit 0
+          fi
+          if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
+            echo "Missing N8N_RECEIVING_TOKEN secret in the n8n-receiving environment; cannot verify response signature."
+            exit 1
           fi
 
           if ! command -v openssl >/dev/null 2>&1; then
@@ -1228,11 +1228,16 @@ jobs:
 
       # Step 17: Post grouped inline suggestions
       - name: Post batched inline suggestions
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.response_summary.outputs.has_suggestions == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+
+          if [[ ! -f review_batches.json ]]; then
+            echo "review_batches.json missing; nothing to post."
+            exit 0
+          fi
 
           STATUS=$(jq -r '.status // empty' review_batches.json)
           if [ "$STATUS" != "completed" ]; then
