@@ -961,7 +961,7 @@ jobs:
 
       - name: Restore raw response payload (for signature verification)
         id: restore_raw_payload
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && secrets.N8N_RECEIVING_TOKEN != '' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && needs.gather-and-send.outputs.response_body_raw != '' }}
         run: |
           set -euo pipefail
           payload='${{ needs.gather-and-send.outputs.response_body_raw }}'
@@ -973,7 +973,7 @@ jobs:
           echo "restored=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify n8n response signature
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.restore_raw_payload.outputs.restored == 'true' && secrets.N8N_RECEIVING_TOKEN != '' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.restore_raw_payload.outputs.restored == 'true' && needs.gather-and-send.outputs.response_signature != '' }}
         env:
           N8N_RECEIVING_TOKEN: ${{ secrets.N8N_RECEIVING_TOKEN }}
           RESPONSE_SIG: ${{ needs.gather-and-send.outputs.response_signature }}
@@ -983,6 +983,10 @@ jobs:
 
           if [[ -z "${RESPONSE_SIG:-}" ]]; then
             echo "Missing X-Response-Signature value from upstream job."
+            exit 1
+          fi
+          if [[ -z "${N8N_RECEIVING_TOKEN:-}" ]]; then
+            echo "Missing N8N_RECEIVING_TOKEN secret in the n8n-receiving environment."
             exit 1
           fi
 
