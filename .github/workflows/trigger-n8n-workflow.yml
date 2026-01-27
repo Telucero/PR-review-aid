@@ -945,6 +945,43 @@ jobs:
         with:
           ref: ${{ needs.gather-and-send.outputs.commit_sha }}
 
+      - name: Post ack when n8n response is empty
+        if: ${{ needs.gather-and-send.outputs.response_payload == '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ needs.gather-and-send.outputs.repository }}
+          PR: ${{ needs.gather-and-send.outputs.pr_number }}
+          RUN_URL: ${{ needs.gather-and-send.outputs.run_url }}
+          COMMIT_SHA: ${{ needs.gather-and-send.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" || -z "${REPO:-}" || -z "${PR:-}" ]]; then
+            echo "Missing repo context; skipping ack post."
+            exit 0
+          fi
+
+          OWNER="${REPO%%/*}"
+          NAME="${REPO#*/}"
+
+          BODY=$(
+            printf '%s\n\n%s\n%s\n' \
+              "n8n responded successfully but no review suggestions were provided." \
+              "Run: ${RUN_URL:-<unknown>}" \
+              "Commit: ${COMMIT_SHA:-<unknown>}"
+          )
+          PAYLOAD="$(jq -n --arg body "$BODY" '{event:"COMMENT", body:$body}')"
+
+          curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+            --retry 1 --retry-all-errors \
+            --no-progress-meter --http1.1 --noproxy '*' \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${OWNER}/${NAME}/pulls/${PR}/reviews" \
+            -d "$PAYLOAD" >/dev/null
+
       # Step 14: Restore response payload from upstream output
       - name: Restore response payload
         id: restore_payload
