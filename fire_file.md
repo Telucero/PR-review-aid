@@ -8,4 +8,4 @@ Pauser: Can pause NTT contracts to halt token transfers temporarily. This role i
 You may verify the current owner, pauser, and paused status of the NTT Manager contract on the deployment.json file in your NTT project directory.
 
 
-Egg plant dog wolf
+Egg plant dog wolf ......
