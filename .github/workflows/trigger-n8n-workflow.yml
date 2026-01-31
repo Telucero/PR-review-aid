@@ -1178,14 +1178,97 @@ jobs:
           echo "has_suggestions=${HAS}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Post ack when n8n returned no suggestions
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.response_summary.outputs.has_suggestions != 'true' }}
+      - name: Guard PR head SHA before commenting
+        id: comment_guard
+        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.inputs.pr_number }}
+          EXPECTED_SHA_FROM_SEND: ${{ needs.gather-and-send.outputs.commit_sha }}
+          EXPECTED_SHA_FROM_N8N: ${{ steps.response_summary.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected="$(printf '%s' "${EXPECTED_SHA_FROM_SEND:-}" | tr -d '\r\n')"
+          if [[ -z "${expected:-}" ]]; then
+            expected="$(printf '%s' "${EXPECTED_SHA_FROM_N8N:-}" | tr -d '\r\n')"
+          fi
+
+          current="$(gh api "repos/${REPO}/pulls/${PR}" --jq '.head.sha // ""' 2>/dev/null || true)"
+          current="$(printf '%s' "${current:-}" | tr -d '\r\n')"
+
+          {
+            echo "should_post=false"
+            echo "skip_reason="
+            echo "expected_sha=${expected}"
+            echo "current_sha=${current}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ -z "${expected:-}" || -z "${current:-}" ]]; then
+            echo "Unable to verify PR head SHA; skipping comment posting."
+            echo "skip_reason=unable_to_verify_head_sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$current" != "$expected" ]]; then
+            echo "PR head SHA changed (current=${current} expected=${expected}); skipping comment posting."
+            echo "skip_reason=head_sha_changed_before_comment" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_post=true" >> "$GITHUB_OUTPUT"
+
+      - name: Post skip notice when PR head changed
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.comment_guard.outputs.should_post != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.inputs.pr_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_SHA: ${{ steps.response_summary.outputs.head_sha }}
+          EXPECTED_SHA: ${{ steps.comment_guard.outputs.expected_sha }}
+          CURRENT_SHA: ${{ steps.comment_guard.outputs.current_sha }}
+          SKIP_REASON: ${{ steps.comment_guard.outputs.skip_reason }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" || -z "${REPO:-}" || -z "${PR:-}" ]]; then
+            echo "Missing repo context; skipping skip-notice post."
+            exit 0
+          fi
+
+          OWNER="${REPO%%/*}"
+          NAME="${REPO#*/}"
+
+          BODY=$(
+            printf '%s\n\n%s\n%s\n%s\n%s\n' \
+              "Automated style guide suggestions (skipped)" \
+              "Reason: ${SKIP_REASON:-unknown}" \
+              "Related commit: ${EXPECTED_SHA:-<unknown>}" \
+              "Current PR head: ${CURRENT_SHA:-<unknown>}" \
+              "Run: ${RUN_URL:-<unknown>}"
+          )
+          PAYLOAD="$(jq -n --arg body "$BODY" '{event:"COMMENT", body:$body}')"
+
+          curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+            --retry 1 --retry-all-errors \
+            --no-progress-meter --http1.1 --noproxy '*' \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${OWNER}/${NAME}/pulls/${PR}/reviews" \
+            -d "$PAYLOAD" >/dev/null
+
+      - name: Post ack when n8n returned no suggestions
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.comment_guard.outputs.should_post == 'true' && steps.response_summary.outputs.has_suggestions != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.inputs.pr_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ steps.comment_guard.outputs.expected_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1202,7 +1285,7 @@ jobs:
             printf '%s\n\n%s\n%s\n' \
               "n8n responded successfully but no review suggestions were provided." \
               "Run: ${RUN_URL:-<unknown>}" \
-              "${COMMIT_SHA:-<unknown>}"
+              "Related commit: ${COMMIT_SHA:-<unknown>}"
           )
           PAYLOAD="$(jq -n --arg body "$BODY" '{event:"COMMENT", body:$body}')"
 
@@ -1217,7 +1300,7 @@ jobs:
 
       # Step 16: Prepare grouped review batches
       - name: Prepare batched review payloads
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.response_summary.outputs.has_suggestions == 'true' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.comment_guard.outputs.should_post == 'true' && steps.response_summary.outputs.has_suggestions == 'true' }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -1246,6 +1329,8 @@ jobs:
               or primary_payload.get('prepared_comment_payloads')
               or []
           )
+
+          head_sha = (data.get("head_sha") or primary_payload.get("head_sha") or "").strip()
 
           def normalize(raw):
               path = raw.get('path') or raw.get('file_path')
@@ -1289,6 +1374,8 @@ jobs:
           for start in range(0, total, chunk_size):
               chunk = comments[start:start + chunk_size]
               summary = f"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})"
+              if head_sha:
+                  summary += f"\\nRelated commit: {head_sha}"
               chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
               batch = {'body': summary, 'comments': chunk}
               if len(chunk_commit_ids) == 1:
@@ -1312,7 +1399,7 @@ jobs:
 
       # Step 17: Post grouped inline suggestions
       - name: Post batched inline suggestions
-        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.response_summary.outputs.has_suggestions == 'true' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.comment_guard.outputs.should_post == 'true' && steps.response_summary.outputs.has_suggestions == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1392,7 +1479,7 @@ jobs:
 
       # Step 18: Publish any verification reviews
       - name: Post verification comments
-        if: ${{ steps.restore_payload.outputs.restored == 'true' }}
+        if: ${{ steps.restore_payload.outputs.restored == 'true' && steps.comment_guard.outputs.should_post == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
