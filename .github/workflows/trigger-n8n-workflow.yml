@@ -1375,7 +1375,7 @@ jobs:
               chunk = comments[start:start + chunk_size]
               summary = f"Automated style guide suggestions ({start + 1}-{start + len(chunk)} of {total})"
               if head_sha:
-                  summary += f"\\nRelated commit: {head_sha}"
+                  summary += f"\nRelated commit: {head_sha}"
               chunk_commit_ids = {cid for cid in commit_ids[start:start + chunk_size] if cid}
               batch = {'body': summary, 'comments': chunk}
               if len(chunk_commit_ids) == 1:
