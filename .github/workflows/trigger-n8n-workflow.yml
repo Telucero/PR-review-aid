@@ -48,6 +48,7 @@ jobs:
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       PR_SELECTOR: ${{ github.event.inputs.pr_selector }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
+      N8N_ROSE_LANGUAGES: ${{ vars.N8N_ROSE_LANGUAGES }}
     steps:
       # Step 2: Generate unique run token
       - name: Generate Run UUID
@@ -431,7 +432,7 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
-          import json, re, sys
+          import json, os, re, sys
 
           files_path = Path("files.json")
           try:
@@ -456,6 +457,23 @@ jobs:
           pattern_ai_dir = re.compile(r'(^|/)\.ai(/|$)', re.IGNORECASE)
           pattern_llms   = re.compile(r'llms', re.IGNORECASE)
 
+          langs_raw = (os.environ.get("N8N_ROSE_LANGUAGES") or "").strip()
+          excluded_langs = set()
+          if langs_raw:
+              for tok in re.split(r"[\s,;]+", langs_raw):
+                  code = tok.strip().lower()
+                  if not code or code == "en":
+                      continue
+                  excluded_langs.add(code)
+
+          def is_excluded_language_path(path: str) -> bool:
+              if not excluded_langs:
+                  return False
+              for part in path.split("/"):
+                  if part.lower() in excluded_langs:
+                      return True
+              return False
+
           filtered = []
           total_additions = 0
           for item in data:
@@ -466,6 +484,8 @@ jobs:
               if status == "removed":
                   continue
               if pattern_ai_dir.search(filename) or pattern_llms.search(filename):
+                  continue
+              if is_excluded_language_path(filename):
                   continue
               filtered.append(item)
               additions = item.get("additions")
@@ -492,14 +512,39 @@ jobs:
           python3 - <<'PY'
           import pathlib, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
+          import os
+          import re
 
           diff_path = Path('pr.diff')
           if not diff_path.exists():
             raise SystemExit('pr.diff missing')
 
+          langs_raw = (os.environ.get("N8N_ROSE_LANGUAGES") or "").strip()
+          excluded_langs = set()
+          if langs_raw:
+            for tok in re.split(r"[\\s,;]+", langs_raw):
+              code = tok.strip().lower()
+              if not code or code == "en":
+                continue
+              excluded_langs.add(code)
+
+          def is_excluded_language_path(path: str) -> bool:
+            if not excluded_langs:
+              return False
+            for part in path.split('/'):
+              if part.lower() in excluded_langs:
+                return True
+            return False
+
           def is_excluded(path: str) -> bool:
             lower = path.lower()
-            return ('/.ai/' in lower or lower.startswith('.ai/') or lower.endswith('/.ai') or 'llms' in lower)
+            return (
+              '/.ai/' in lower
+              or lower.startswith('.ai/')
+              or lower.endswith('/.ai')
+              or 'llms' in lower
+              or is_excluded_language_path(path)
+            )
 
           out_lines = []
           current_chunk = []
