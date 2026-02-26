@@ -105,7 +105,13 @@ jobs:
             exit 1
           fi
 
-          RESOLVED_PR_NUMBER="$(gh pr view "${selector}" --repo "${REPO}" --json number --jq '.number')"
+          RESOLVED_PR_NUMBER=""
+          for attempt in 1 2 3; do
+            if RESOLVED_PR_NUMBER="$(gh pr view "${selector}" --repo "${REPO}" --json number --jq '.number' 2>/dev/null)"; then
+              break
+            fi
+            sleep $((attempt * 2))
+          done
           if [[ -z "${RESOLVED_PR_NUMBER:-}" ]]; then
             echo "Unable to resolve PR number from pr_selector='${selector}'." >&2
             exit 1
@@ -299,7 +305,27 @@ jobs:
       - name: Fetch PR metadata
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' }}
         run: |
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/pr.json"
+          set -euo pipefail
+          tmp="${RUNNER_TEMP}/pr.json.tmp"
+          out="${RUNNER_TEMP}/pr.json"
+          rm -f "$tmp" 2>/dev/null || true
+
+          ok=false
+          for attempt in 1 2 3; do
+            if gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/pulls/${PR_NUMBER}" > "$tmp" 2>/dev/null; then
+              ok=true
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+
+          if [[ "$ok" != "true" ]]; then
+            rm -f "$tmp" 2>/dev/null || true
+            echo "Unable to fetch PR metadata; skipping gracefully."
+            exit 0
+          fi
+
+          mv "$tmp" "$out"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -382,11 +408,11 @@ jobs:
           set -euo pipefail
 
           compare_json=""
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             if compare_json="$(gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/compare/${BASE_SHA}...${COMMIT_SHA}" 2>/dev/null)"; then
               break
             fi
-            sleep 2
+            sleep $((attempt * 2))
           done
 
           if [[ -z "${compare_json:-}" ]]; then
@@ -410,12 +436,12 @@ jobs:
           set -euo pipefail
 
           ok=false
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             if gh api -H "Accept: application/vnd.github.v3.diff" "repos/${REPO}/compare/${BASE_SHA}...${COMMIT_SHA}" > pr.diff 2>/dev/null; then
               ok=true
               break
             fi
-            sleep 2
+            sleep $((attempt * 2))
           done
 
           if [[ "$ok" != "true" ]]; then
@@ -723,7 +749,13 @@ jobs:
           EXPECTED_SHA="$(printf '%s' "${COMMIT_SHA:-}" | tr -d '\r\n')"
           guard_head_sha_unchanged() {
             local current_head=""
-            current_head="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha // ""' 2>/dev/null || true)"
+            for attempt in 1 2 3; do
+              current_head="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha // ""' 2>/dev/null || true)"
+              if [[ -n "${current_head:-}" ]]; then
+                break
+              fi
+              sleep $((attempt * 2))
+            done
             if [[ -z "${current_head:-}" || -z "${EXPECTED_SHA:-}" ]]; then
               echo "Unable to verify PR head SHA; skipping send."
               echo "skip_reason=unable_to_verify_head_sha" >> "$GITHUB_OUTPUT"
