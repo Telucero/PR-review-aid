@@ -807,54 +807,77 @@ jobs:
           HEADER_FILE=$(mktemp)
           trap 'rm -f "$HEADER_FILE"' EXIT
 
-          # 6a) Skip if PR head moved right before sending
-          guard_head_sha_unchanged
+          # 6a) App-level retry: sometimes n8n returns HTTP 200 but omits status/token (transient).
+          max_app_attempts=3
+          app_attempt=1
+          HTTP_BODY=""
+          HTTP_STATUS=""
+          while (( app_attempt <= max_app_attempts )); do
+            # Skip if PR head moved right before sending
+            guard_head_sha_unchanged
 
-          RESPONSE="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-            --retry 1 --retry-all-errors \
-            --no-progress-meter --http1.1 --noproxy '*' \
-            -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-Run-Token: $RUN_TOKEN" \
-            -H "X-Signature: sha256=${SIG}" \
-            --data-binary @payload.json \
-            "$N8N_WEBHOOK_URL")" || {
-              echo "Request failed."
+            : > "$HEADER_FILE"
+            RESPONSE="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+              --retry 1 --retry-all-errors \
+              --no-progress-meter --http1.1 --noproxy '*' \
+              -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
+              -H "Content-Type: application/json" \
+              -H "X-Run-Token: $RUN_TOKEN" \
+              -H "X-Signature: sha256=${SIG}" \
+              --data-binary @payload.json \
+              "$N8N_WEBHOOK_URL")" || {
+                echo "Request failed."
+                echo "error=true" >> "$GITHUB_OUTPUT"
+                if command -v shred >/dev/null 2>&1; then shred -u payload.json 2>/dev/null || true; else rm -f payload.json || true; fi
+                rm -f "$HEADER_FILE"
+                exit 0
+              }
+
+            HTTP_BODY="$(printf '%s\n' "$RESPONSE" | sed '$d')"
+            HTTP_STATUS="$(printf '%s\n' "$RESPONSE" | tail -n1)"
+            echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
+            echo "n8n responded with status: $HTTP_STATUS (attempt $app_attempt/$max_app_attempts)"
+
+            if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
+              echo "n8n workflow failed (HTTP $HTTP_STATUS)"
               echo "error=true" >> "$GITHUB_OUTPUT"
               if command -v shred >/dev/null 2>&1; then shred -u payload.json 2>/dev/null || true; else rm -f payload.json || true; fi
-              rm -f "$HEADER_FILE"
               exit 0
-            }
+            fi
 
-          # Remove payload quickly
+            CTYPE_RAW="$(grep -i '^content-type:' "$HEADER_FILE" | tail -1 | tr -d '\r')"
+            CTYPE_LOWER="$(printf '%s' "${CTYPE_RAW}" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$CTYPE_LOWER" != *"application/json"* ]]; then
+              echo "Unexpected content-type '${CTYPE_RAW:-unknown}'."
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              if command -v shred >/dev/null 2>&1; then shred -u payload.json 2>/dev/null || true; else rm -f payload.json || true; fi
+              exit 0
+            fi
+
+            STATUS="$(jq -r '.status // empty' <<< "$HTTP_BODY" 2>/dev/null || true)"
+            MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY" 2>/dev/null || true)"
+
+            # If 200 but missing fields, retry a couple times (transient).
+            if [[ -z "$STATUS" || -z "$MATCHED" ]]; then
+              if [[ "$HTTP_STATUS" == "200" && "$app_attempt" -lt "$max_app_attempts" ]]; then
+                echo "n8n returned HTTP 200 but missing status/token; retrying..."
+                sleep $((2 * app_attempt))
+                app_attempt=$((app_attempt + 1))
+                continue
+              fi
+            fi
+
+            # Break out of the loop and continue normal validation with this response.
+            break
+          done
+
+          # Remove payload quickly (after retries)
           if command -v shred >/dev/null 2>&1; then shred -u payload.json 2>/dev/null || true; else rm -f payload.json || true; fi
-
-          HTTP_BODY="$(printf '%s\n' "$RESPONSE" | sed '$d')"
-          HTTP_STATUS="$(printf '%s\n' "$RESPONSE" | tail -n1)"
-          echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
-          echo "n8n responded with status: $HTTP_STATUS"
 
           RAW_BODY_LEN="$(printf '%s' "$HTTP_BODY" | wc -c | tr -d '[:space:]')"
           echo "response_body_len=${RAW_BODY_LEN:-0}" >> "$GITHUB_OUTPUT"
           RAW_BODY_B64="$(printf '%s' "$HTTP_BODY" | base64 -w 0)"
           echo "response_body_raw=${RAW_BODY_B64}" >> "$GITHUB_OUTPUT"
-
-          if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 300 ]]; then
-            echo "n8n workflow failed (HTTP $HTTP_STATUS)"
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          CTYPE_RAW="$(grep -i '^content-type:' "$HEADER_FILE" | tail -1 | tr -d '\r')"
-          CTYPE_LOWER="$(printf '%s' "${CTYPE_RAW}" | tr '[:upper:]' '[:lower:]')"
-          if [[ "$CTYPE_LOWER" != *"application/json"* ]]; then
-            echo "Unexpected content-type '${CTYPE_RAW:-unknown}'."
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          STATUS="$(jq -r '.status // empty' <<< "$HTTP_BODY")"
-          MATCHED="$(jq -r '.token // empty'  <<< "$HTTP_BODY")"
 
           HEADER_SIG="$(python3 - <<'PY' "$HEADER_FILE"
           import sys
