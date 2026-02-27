@@ -1290,7 +1290,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.inputs.pr_number }}
+          PR: ${{ needs.gather-and-send.outputs.pr_number || github.event.inputs.pr_number }}
           EXPECTED_SHA_FROM_SEND: ${{ needs.gather-and-send.outputs.commit_sha }}
           EXPECTED_SHA_FROM_N8N: ${{ steps.response_summary.outputs.head_sha }}
         shell: bash
@@ -1331,7 +1331,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.inputs.pr_number }}
+          PR: ${{ needs.gather-and-send.outputs.pr_number || github.event.inputs.pr_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EXPECTED_SHA: ${{ steps.comment_guard.outputs.expected_sha }}
           CURRENT_SHA: ${{ steps.comment_guard.outputs.current_sha }}
@@ -1372,7 +1372,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.inputs.pr_number }}
+          PR: ${{ needs.gather-and-send.outputs.pr_number || github.event.inputs.pr_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_SHA: ${{ steps.comment_guard.outputs.expected_sha }}
         shell: bash
