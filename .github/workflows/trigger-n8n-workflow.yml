@@ -30,7 +30,7 @@ jobs:
       checks: write
     outputs:
       triggered: ${{ steps.trigger_phrase.outputs.triggered || 'false' }}
-      commit_sha: ${{ steps.trigger_phrase.outputs.commit_sha || '' }}
+      commit_sha: ${{ steps.sha_guard.outputs.head_sha || steps.trigger_phrase.outputs.commit_sha || '' }}
       filtered_file_count: ${{ steps.filter_files.outputs.file_count || '0' }}
       filtered_addition_count: ${{ steps.filter_files.outputs.addition_count || '0' }}
       should_send: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && (steps.filter_files.outputs.addition_count || '0') != '0' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
@@ -46,11 +46,6 @@ jobs:
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
       N8N_ROSE_LANGUAGES: ${{ vars.N8N_ROSE_LANGUAGES }}
     steps:
-      # Step 2: Generate unique run token
-      - name: Generate Run UUID
-        id: uuid
-        run: echo run_token=$(uuidgen) >> $GITHUB_OUTPUT
-
       # Step 2b: Require dispatcher to have access
       - name: Validate dispatcher permissions
         if: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
@@ -1090,7 +1085,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - gather-and-send
-    if: ${{ needs.gather-and-send.result == 'success' }}
+    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.should_send == 'true' }}
     permissions:
       actions: read
     outputs:
@@ -1121,7 +1116,7 @@ jobs:
                     | .name as $name
                     | ($name | capture("^n8n-response-(?<n>[0-9]+)$").n | tonumber) as $n
                     | {name:$name, n:$n}
-                    | select(.n <= $cur)
+                    | select(.n == $cur)
                   ]
                   | sort_by(.n)
                   | last // empty
@@ -1151,7 +1146,7 @@ jobs:
     needs:
       - gather-and-send
       - detect-n8n-response
-    if: ${{ needs.gather-and-send.result == 'success' && needs.detect-n8n-response.outputs.has_response_artifact == 'true' }}
+    if: ${{ needs.gather-and-send.result == 'success' && needs.gather-and-send.outputs.should_send == 'true' && needs.detect-n8n-response.outputs.has_response_artifact == 'true' }}
     environment: n8n-receiving
     permissions:
       contents: read
