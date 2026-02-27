@@ -1001,7 +1001,7 @@ jobs:
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload n8n response artifact
-        if: ${{ steps.send_payload.outputs.executed == 'true' && steps.send_payload.outputs.error != 'true' }}
+        if: ${{ steps.send_payload.outputs.executed == 'true' && steps.send_payload.outputs.error != 'true' && steps.send_payload.outputs.ok == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: n8n-response-${{ github.run_attempt }}
