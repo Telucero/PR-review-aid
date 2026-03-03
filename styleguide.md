@@ -12,31 +12,31 @@ Follow these steps before proposing edits or automated review comments for techn
 6. All Sentences must end with punctuation, either a period, colon, semicolon, or question mark as appropriate.
 
 ### Clarity and Specificity
-- **Rule L1 – Use a neutral, instructional voice.** Avoid explicit marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Adjectives/adverbs that describes degrees of quality, goodness, completeness, strength, or significance are allowed, for example `powerful`, `flexible`, `scalable`, `complete`, `robust`, `good`, `easy` and `great` are acceptable. Prefer declarative sentences that state exactly what the page delivers.
+- **Use a neutral, instructional voice.** Avoid explicit marketing claims, superlatives, or promises such as "learn everything you need to know." Descriptive adjectives that state facts about the product are allowed when they can be backed by documentation (for example, "An open-source library that provides powerful XCM tooling" is acceptable if the tooling is demonstrably comprehensive). Adjectives/adverbs that describes degrees of quality, goodness, completeness, strength, or significance are allowed, for example `powerful`, `flexible`, `scalable`, `complete`, `robust`, `good`, `easy` and `great` are acceptable. Prefer declarative sentences that state exactly what the page delivers.
   Use: `This guide explains how light clients validate blocks on Polkadot.`  
   Avoid: `Learn everything you need to know about light clients on Polkadot.`
 Meta tags like description may use some marketing language to improve click-through rates in search results, however it may not contain superlatives or unverifiable claims or explicit marketing language.
-- **Rule L2 – Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
-- **Rule L3 – Address the reader as "you."** Avoid possessive language ("our," "we").
-- **Rule L3.1 – Use inclusive language.** Avoid gendered pronouns ("he," "she") but you can use "they" third person to refer to a nouns or objects like `Evm allows you to...`. When referring to the reader, always use "you."
-- **Rule L4 – Write timeless documentation.** Remove wording that anchors the page to a specific calendar moment. Flag phrases such as "currently," "at the time of writing," "as of 2023," "today," "recently," or absolute timestamps that are not required for accuracy. Do **not** flag legitimate use of future or past tense (for example, "will deploy" or "was created") when the action itself occurs in that timeframe; only comment when the wording makes the guidance expire. The usage of before or after a time or event is acceptable when it indicates a condition for the instructions.
-- **Rule L5 – Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with ending punctuation. Do not drop punctuation to meet length targets.
-- **Rule L6 – Keep sentences concise.** A soft word limit for at 15 characters per sentence to ensure readability while preserving full meaning.
-- **Rule L7 – Active voice for procedures.** Use active voice in instructions ("Click Connect") while passive voice remains acceptable in conceptual summaries.
+- **Provide context before instructions.** State prerequisites, the goal, or the system state before telling the reader what to click or run.
+- **Address the reader as "you."** Avoid possessive language ("our," "we").
+- **Use inclusive language.** Avoid gendered pronouns ("he," "she") but you can use "they" third person to refer to a nouns or objects like `Evm allows you to...`. When referring to the reader, always use "you."
+- **Write timeless documentation.** Remove wording that anchors the page to a specific calendar moment. Flag phrases such as "currently," "at the time of writing," "as of 2023," "today," "recently," or absolute timestamps that are not required for accuracy. Do **not** flag legitimate use of future or past tense (for example, "will deploy" or "was created") when the action itself occurs in that timeframe; only comment when the wording makes the guidance expire. The usage of before or after a time or event is acceptable when it indicates a condition for the instructions.
+- **Deliver complete sentences with punctuation.** Every suggestion or rewrite must end with ending punctuation. Do not drop punctuation to meet length targets.
+- **Keep sentences concise.** A soft word limit for at 15 characters per sentence to ensure readability while preserving full meaning.
+- **Active voice for procedures.** Use active voice in instructions ("Click Connect") while passive voice remains acceptable in conceptual summaries.
 
 
 
 ### Formal vs Informal Voice
-- **Rule L8 – Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without first-person pronouns, however first person plural pronoun "Let's" is allowed. General contractions are allowed in formal writing (for example, "don't," "it's," "you're") to improve flow, but avoid colloquialisms or slang. Standard speech and writing are acceptable when giving instructions or examples with phrases like "be sure to".
-- **Rule L9 - Informal tone is only allowed within standard speech** Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
+- **Default to a formal tone.** Guides, references, and conceptual overviews must use formal language without first-person pronouns, however first person plural pronoun "Let's" is allowed. General contractions are allowed in formal writing (for example, "don't," "it's," "you're") to improve flow, but avoid colloquialisms or slang. Standard speech and writing are acceptable when giving instructions or examples with phrases like "be sure to".
+- **Informal tone is only allowed within standard speech** Super informal language or slang in documentation is not allowed but normal phrases you would use in standard speech and writing are acceptable.
 
-- **Rule L10 – Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
+- **Allow informal tone only in tutorials.** You may use contractions ("let's," "you're") and collaborative phrasing when:
   - The front matter includes `type: tutorial` or a similar tutorial flag, or
   - The file resides in a tutorials directory (for example, `/tutorials/`, `/get-started/`), or
   - The content explicitly walks the reader through a task step by step.  
   When unsure, default to the formal tone.
 
-### Things to Avoid
+### DO NOT USE
 - Casual language or slang in formal documentation
 - Unnecessary jargon without definitions
 - Biases, opinions, or emotional language
@@ -53,12 +53,12 @@ Meta tags like description may use some marketing language to improve click-thro
 - Do not apply additional inline formatting (italics or underline) to links.
 
 ### Page Structure
-- **PS1 – Meta front matter is mandatory.** Every Markdown page must expose `title` and `description` keys in its front matter. Missing keys or empty strings must be reported.
+- **Meta front matter is mandatory.** Every Markdown page must expose `title` and `description` keys in its front matter. Missing keys or empty strings must be reported.
   - `title` must be ≤ 60 characters, summarize the page uniquely, and contain one primary keyword.
-  - `description` should be 130–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
-- **PS2 – H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
-- **PS3 – Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Instructional heading and Task heading can be used with instructional phrases like `How it works`, `How to use`, or some similar variations as `EVM: What is it` or `EVM: How to use it` and `What to expect from this page`. Nouns are acceptable headings like `Additional Resources` and so are prepositional phrases like `In this Section`. Do not allow manually numbered headings (`1. Overview`).
-- **PS4 – Heading hierarchy.** Maintain a logical heading structure that flows from H1 to H2, H3, and so on without skipping levels. Flag any jumps (for example, H2 to H4). 
+  - `description` should be 120–160 characters, written as a single sentence that describes the reader benefit. End with a period. It's best to front-load the most important information so it's visible on all devices.
+- **H1 alignment.** The visible H1 must exactly match the front-matter `title`. Flag mismatches or multiple H1 headings.
+- **Heading patterns.** Task headings must be imperative (for example, `Configure the relay`). Concept headings must be noun phrases (for example, `Relay architecture`). Instructional heading and Task heading can be used with instructional phrases like `How it works`, `How to use`, or some similar variations as `EVM: What is it` or `EVM: How to use it` and `What to expect from this page`. Nouns are acceptable headings like `Additional Resources` and so are prepositional phrases like `In this Section`. Do not allow manually numbered headings (`1. Overview`).
+- **Heading hierarchy.** Maintain a logical heading structure that flows from H1 to H2, H3, and so on without skipping levels. Flag any jumps (for example, H2 to H4). 
 
 ### .nav.yml Structure
 - Define each navigation file with two keys only: `title` and `nav`.
