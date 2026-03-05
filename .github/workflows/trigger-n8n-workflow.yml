@@ -1356,8 +1356,11 @@ jobs:
           fi
 
           # FIX #2: Use Python hmac.compare_digest() for constant-time comparison
-          # instead of bash string equality which is vulnerable to timing attacks
+          # instead of bash string equality which is vulnerable to timing attacks.
+          # Encoding: base64 (matching n8n and the original openssl dgst | base64 output).
+          # Payload: read as text and rstrip newline to match original printf '%s' behaviour.
           python3 - <<'PY'
+          import base64
           import hmac
           import hashlib
           import os
@@ -1370,9 +1373,13 @@ jobs:
               sys.exit(1)
 
           response_sig = Path("response_signature.txt").read_text().strip()
-          payload = Path("payload_for_sig.txt").read_bytes()
+          # rstrip newline to match original `printf '%s'` behaviour which strips trailing newlines
+          payload = Path("payload_for_sig.txt").read_text().rstrip('\n').encode()
 
-          expected_sig = "sha256=" + hmac.new(token, payload, hashlib.sha256).hexdigest()
+          # base64 encoding to match n8n and original: openssl dgst -sha256 -hmac ... | base64
+          expected_sig = "sha256=" + base64.b64encode(
+              hmac.new(token, payload, hashlib.sha256).digest()
+          ).decode().strip()
 
           if not hmac.compare_digest(response_sig, expected_sig):
               print("Response signature mismatch.", file=sys.stderr)
