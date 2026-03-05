@@ -17,6 +17,10 @@ permissions:
   pull-requests: read
   checks: write
 
+concurrency:
+  group: nathan-${{ github.repository }}-${{ github.event.inputs.pr_number || github.event.inputs.pr_selector || 'unknown' }}
+  cancel-in-progress: false
+
 
 jobs:
   gather-and-send:
@@ -33,7 +37,7 @@ jobs:
       commit_sha: ${{ steps.sha_guard.outputs.head_sha || steps.trigger_phrase.outputs.commit_sha || '' }}
       filtered_file_count: ${{ steps.filter_files.outputs.file_count || '0' }}
       filtered_addition_count: ${{ steps.filter_files.outputs.addition_count || '0' }}
-      should_send: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && (steps.filter_files.outputs.addition_count || '0') != '0' && steps.send_payload.outputs.cancelled != 'true' && steps.send_payload.outputs.error != 'true' }}
+      should_send: ${{ steps.send_payload.outputs.ok == 'true' }}
       pr_number: ${{ steps.run_context.outputs.pr_number }}
       repository: ${{ steps.run_context.outputs.repository }}
       run_url: ${{ steps.run_context.outputs.run_url }}
@@ -439,6 +443,7 @@ jobs:
           cp "$pr_json_path" pr.json
 
       - name: Fetch PR files and commits (stable compare)
+        id: fetch_compare
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -448,6 +453,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
+            echo "ok=false"
+            echo "skip_reason="
+          } >> "$GITHUB_OUTPUT"
 
           compare_json=""
           for attempt in 1 2 3; do
@@ -459,15 +468,21 @@ jobs:
 
           if [[ -z "${compare_json:-}" ]]; then
             echo "Unable to fetch compare JSON; skipping gracefully."
+            # Keep downstream steps from failing on missing artifacts.
+            printf '%s\n' '[]' > files.json
+            printf '%s\n' '[]' > commits.json
+            echo "skip_reason=compare_fetch_failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           printf '%s' "$compare_json" | jq '.files // []' > files.json
           printf '%s' "$compare_json" | jq '.commits // []' > commits.json
+          echo "ok=true" >> "$GITHUB_OUTPUT"
 
       # Step 5: Download stable diff for BASE_SHA...COMMIT_SHA
       - name: Fetch PR diff
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        id: fetch_diff
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_compare.outputs.ok == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -476,6 +491,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
+            echo "ok=false"
+            echo "skip_reason="
+          } >> "$GITHUB_OUTPUT"
 
           ok=false
           for attempt in 1 2 3; do
@@ -488,13 +507,17 @@ jobs:
 
           if [[ "$ok" != "true" ]]; then
             echo "Unable to fetch compare diff; skipping gracefully."
+            # Keep downstream steps from failing on missing artifacts.
+            : > pr.diff
+            echo "skip_reason=diff_fetch_failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - name: Filter excluded files
         id: filter_files
         shell: bash
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_compare.outputs.ok == 'true' }}
         run: |
           set -euo pipefail
 
@@ -521,9 +544,9 @@ jobs:
               print(raw)
               data = []
 
-          # Exclude paths under ".ai" directory (any depth) or any filename containing "llms"
+          # Exclude paths under ".ai" directory (any depth) or any *basename* containing "llms"
           pattern_ai_dir = re.compile(r'(^|/)\.ai(/|$)', re.IGNORECASE)
-          pattern_llms   = re.compile(r'llms', re.IGNORECASE)
+          pattern_llms_base = re.compile(r'llms', re.IGNORECASE)
 
           langs_raw = (os.environ.get("N8N_ROSE_LANGUAGES") or "").strip()
           excluded_langs = set()
@@ -534,11 +557,29 @@ jobs:
                       continue
                   excluded_langs.add(code)
 
+          _i18n_parents = {
+              "i18n",
+              "l10n",
+              "locale",
+              "locales",
+              "lang",
+              "langs",
+              "messages",
+              "translations",
+              "translation",
+          }
+
           def is_excluded_language_path(path: str) -> bool:
               if not excluded_langs:
                   return False
-              for part in path.split("/"):
-                  if part.lower() in excluded_langs:
+              parts = path.split("/")
+              for idx, part in enumerate(parts):
+                  code = part.lower()
+                  if code not in excluded_langs:
+                      continue
+                  if idx == 0:
+                      return True
+                  if parts[idx - 1].lower() in _i18n_parents:
                       return True
               return False
 
@@ -548,10 +589,11 @@ jobs:
               if not isinstance(item, dict):
                   continue
               filename = item.get("filename") or ""
+              basename = filename.rsplit("/", 1)[-1]
               status = (item.get("status") or "").lower()
               if status == "removed":
                   continue
-              if pattern_ai_dir.search(filename) or pattern_llms.search(filename):
+              if pattern_ai_dir.search(filename) or pattern_llms_base.search(basename):
                   continue
               if is_excluded_language_path(filename):
                   continue
@@ -564,24 +606,24 @@ jobs:
           Path("file_count.txt").write_text(str(len(filtered)), encoding="utf-8")
           Path("addition_count.txt").write_text(str(total_additions), encoding="utf-8")
           PY
-              FILE_COUNT=$(<file_count.txt)
-              ADDITION_COUNT=$(<addition_count.txt)
-              {
-                echo "file_count=${FILE_COUNT}"
-                echo "addition_count=${ADDITION_COUNT}"
-              } >> "$GITHUB_OUTPUT"
-              echo "Remaining files after filter: ${FILE_COUNT}"
-              echo "Total additions after filter: ${ADDITION_COUNT}"
+          FILE_COUNT=$(<file_count.txt)
+          ADDITION_COUNT=$(<addition_count.txt)
+          {
+            echo "file_count=${FILE_COUNT}"
+            echo "addition_count=${ADDITION_COUNT}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Remaining files after filter: ${FILE_COUNT}"
+          echo "Total additions after filter: ${ADDITION_COUNT}"
 
       # Step 7: Strip excluded paths from diff payload
       - name: Filter diff to excluded paths
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_diff.outputs.ok == 'true' }}
         run: |
           python3 - <<'PY'
-          import pathlib, textwrap; exec(textwrap.dedent('''\
           from pathlib import Path
           import os
           import re
+          import shlex
 
           diff_path = Path('pr.diff')
           if not diff_path.exists():
@@ -590,19 +632,40 @@ jobs:
           langs_raw = (os.environ.get("N8N_ROSE_LANGUAGES") or "").strip()
           excluded_langs = set()
           if langs_raw:
-            for tok in re.split(r"[\\s,;]+", langs_raw):
+            for tok in re.split(r"[\s,;]+", langs_raw):
               code = tok.strip().lower()
               if not code or code == "en":
                 continue
               excluded_langs.add(code)
 
+          _i18n_parents = {
+            "i18n",
+            "l10n",
+            "locale",
+            "locales",
+            "lang",
+            "langs",
+            "messages",
+            "translations",
+            "translation",
+          }
+
           def is_excluded_language_path(path: str) -> bool:
             if not excluded_langs:
               return False
-            for part in path.split('/'):
-              if part.lower() in excluded_langs:
+            parts = path.split('/')
+            for idx, part in enumerate(parts):
+              code = part.lower()
+              if code not in excluded_langs:
+                continue
+              if idx == 0:
+                return True
+              if parts[idx - 1].lower() in _i18n_parents:
                 return True
             return False
+
+          def has_llms_in_basename(path: str) -> bool:
+            return "llms" in (path.rsplit("/", 1)[-1].lower())
 
           def is_excluded(path: str) -> bool:
             lower = path.lower()
@@ -610,9 +673,18 @@ jobs:
               '/.ai/' in lower
               or lower.startswith('.ai/')
               or lower.endswith('/.ai')
-              or 'llms' in lower
+              or has_llms_in_basename(path)
               or is_excluded_language_path(path)
             )
+
+          def parse_diff_git_line(line):
+            try:
+              toks = shlex.split(line.strip())
+            except ValueError:
+              return None, None
+            if len(toks) < 4 or toks[0] != "diff" or toks[1] != "--git":
+              return None, None
+            return toks[2], toks[3]
 
           out_lines = []
           current_chunk = []
@@ -625,10 +697,10 @@ jobs:
                           out_lines.extend(current_chunk)
                       current_chunk = [line]
                       exclude_chunk = False
-                      parts = line.strip().split()
-                      if len(parts) >= 4:
-                          a_path = parts[2][2:]
-                          b_path = parts[3][2:]
+                      a_raw, b_raw = parse_diff_git_line(line)
+                      if a_raw and b_raw:
+                          a_path = a_raw[2:] if a_raw.startswith("a/") else a_raw
+                          b_path = b_raw[2:] if b_raw.startswith("b/") else b_raw
                           if is_excluded(a_path) or is_excluded(b_path):
                               exclude_chunk = True
                   else:
@@ -638,22 +710,22 @@ jobs:
               out_lines.extend(current_chunk)
 
           diff_path.write_text(''.join(out_lines), encoding='utf-8')
-          '''))
           PY
 
       # Step 8: Compress & encode diff for payload
       - name: Compress filtered diff
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_diff.outputs.ok == 'true' }}
         run: |
           gzip -c pr.diff > pr.diff.gz
           base64 -w 0 pr.diff.gz > diff.b64
 
       - name: Build added_lines from diff
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_diff.outputs.ok == 'true' && steps.filter_files.outputs.addition_count != '0' }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import re
+          import shlex
           from pathlib import Path
 
           diff_path = Path("pr.diff")
@@ -666,16 +738,28 @@ jobs:
           in_hunk = False
           new_line = 0
 
-          diff_git_re = re.compile(r"^diff --git a/(.+?) b/(.+?)\\s*$")
-          hunk_re = re.compile(r"^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@")
+          hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
           for raw in diff_path.read_text(encoding="utf-8", errors="replace").splitlines():
-              m = diff_git_re.match(raw)
-              if m:
-                  current_file = m.group(2)
-                  added_by_file.setdefault(current_file, [])
-                  in_hunk = False
-                  new_line = 0
+              if raw.startswith("diff --git "):
+                  try:
+                      toks = shlex.split(raw.strip())
+                  except ValueError:
+                      current_file = None
+                      in_hunk = False
+                      new_line = 0
+                      continue
+                  if len(toks) >= 4 and toks[0] == "diff" and toks[1] == "--git":
+                      b_raw = toks[3]
+                      if b_raw == "/dev/null":
+                          current_file = None
+                          in_hunk = False
+                          new_line = 0
+                          continue
+                      current_file = b_raw[2:] if b_raw.startswith("b/") else b_raw
+                      added_by_file.setdefault(current_file, [])
+                      in_hunk = False
+                      new_line = 0
                   continue
 
               if current_file is None:
@@ -745,7 +829,7 @@ jobs:
 
       # Step 9: Inspect payload sizes for debugging
       - name: Debug payload size
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_compare.outputs.ok == 'true' && steps.fetch_diff.outputs.ok == 'true' }}
         run: |
           echo PR metadata size: $(stat -c%s pr.json) bytes
           echo Files metadata size: $(stat -c%s files.json) bytes
@@ -754,8 +838,15 @@ jobs:
       - name: Generate Run UUID
         id: run_uuid
         shell: bash
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' }}
-        run: echo "run_token=$(uuidgen)" >> "$GITHUB_OUTPUT"
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_diff.outputs.ok == 'true' && steps.filter_files.outputs.addition_count != '0' }}
+        run: |
+          set -euo pipefail
+          if command -v uuidgen >/dev/null 2>&1; then
+            token="$(uuidgen)"
+          else
+            token="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+          fi
+          echo "run_token=$token" >> "$GITHUB_OUTPUT"
 
       - name: Mask run token
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.run_uuid.outputs.run_token != '' }}
@@ -765,7 +856,7 @@ jobs:
         
       - name: Combine and send to n8n webhook 
         id: send_payload
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count != '0' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_compare.outputs.ok == 'true' && steps.fetch_diff.outputs.ok == 'true' && steps.filter_files.outputs.addition_count != '0' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -830,9 +921,15 @@ jobs:
           fi
 
           # 2) Inputs check
-          for f in pr.json files.json commits.json diff.b64 added_lines.json; do
+          for f in pr.json files.json commits.json pr.diff diff.b64 added_lines.json; do
             [[ -f "$f" ]] || { echo "$f missing"; echo "error=true" >> "$GITHUB_OUTPUT"; exit 0; }
           done
+          if [[ ! -s pr.diff ]]; then
+            echo "pr.diff is empty; skipping send."
+            echo "skip_reason=empty_diff" >> "$GITHUB_OUTPUT"
+            echo "cancelled=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # 2b) Skip if PR head moved since we started (after guards)
           guard_head_sha_unchanged
@@ -889,6 +986,7 @@ jobs:
 
             : > "$HEADER_FILE"
             RESPONSE="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+              --connect-timeout 10 --max-time 60 \
               --retry 1 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -D "$HEADER_FILE" -w $'\n%{http_code}' -X POST \
@@ -1056,7 +1154,7 @@ jobs:
 
       # Step 11: Short-circuit when nothing qualifies
       - name: No eligible files to send
-        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.filter_files.outputs.addition_count == '0' }}
+        if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_compare.outputs.ok == 'true' && steps.fetch_diff.outputs.ok == 'true' && steps.filter_files.outputs.addition_count == '0' }}
         run: echo ℹ️ No eligible additions after filtering llms/.ai paths. Skipping n8n send.
 
       - name: Securely delete diff artifacts
@@ -1086,6 +1184,10 @@ jobs:
           SKIP_REASON: ${{ steps.oneshot.outputs.skip_reason }}
           SHA_OK: ${{ steps.sha_guard.outputs.sha_ok }}
           CHECKOUT_OK: ${{ steps.checkout.outcome == 'success' && 'true' || 'false' }}
+          COMPARE_OK: ${{ steps.fetch_compare.outputs.ok || 'false' }}
+          COMPARE_SKIP_REASON: ${{ steps.fetch_compare.outputs.skip_reason || '' }}
+          DIFF_OK: ${{ steps.fetch_diff.outputs.ok || 'false' }}
+          DIFF_SKIP_REASON: ${{ steps.fetch_diff.outputs.skip_reason || '' }}
           ADDITION_COUNT: ${{ steps.filter_files.outputs.addition_count || '0' }}
           SEND_EXECUTED: ${{ steps.send_payload.outputs.executed || 'false' }}
           SEND_ERROR: ${{ steps.send_payload.outputs.error || 'false' }}
@@ -1105,6 +1207,10 @@ jobs:
             reason="head_sha_changed_or_missing"
           elif [[ "${CHECKOUT_OK}" != "true" ]]; then
             reason="checkout_failed"
+          elif [[ "${COMPARE_OK}" != "true" ]]; then
+            reason="${COMPARE_SKIP_REASON:-compare_fetch_failed}"
+          elif [[ "${DIFF_OK}" != "true" ]]; then
+            reason="${DIFF_SKIP_REASON:-diff_fetch_failed}"
           elif [[ "${ADDITION_COUNT}" == "0" ]]; then
             reason="no_eligible_additions"
           elif [[ -n "${SEND_SKIP_REASON:-}" ]]; then
@@ -1394,6 +1500,7 @@ jobs:
           PAYLOAD="$(jq -n --arg body "$BODY" '{event:"COMMENT", body:$body}')"
 
           curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+            --connect-timeout 10 --max-time 30 \
             --retry 1 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -X POST \
@@ -1431,6 +1538,7 @@ jobs:
           PAYLOAD="$(jq -n --arg body "$BODY" '{event:"COMMENT", body:$body}')"
 
           curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+            --connect-timeout 10 --max-time 30 \
             --retry 1 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -X POST \
@@ -1585,6 +1693,7 @@ jobs:
             fi
 
             RESP=$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+              --connect-timeout 10 --max-time 30 \
               --retry 1 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -w '%{http_code}' -X POST \
@@ -1682,6 +1791,7 @@ jobs:
 
             JSON_PAYLOAD=$(jq -nc --arg b "$BODY" '{body:$b}')
             RESP=$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+              --connect-timeout 10 --max-time 30 \
               --retry 1 --retry-all-errors \
               --no-progress-meter --http1.1 --noproxy '*' \
               -w '%{http_code}' -X POST \
@@ -1783,6 +1893,7 @@ jobs:
             '{repository:$repo, pr_number:$pr, gather_status:$gather_status, receive_status:$receive_status, run_url:$run_url, workflow:$workflow, run_id:$run_id, run_attempt:$run_attempt, actor:$actor}')
 
           curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+            --connect-timeout 10 --max-time 30 \
             --retry 1 --retry-all-errors \
             --no-progress-meter --http1.1 --noproxy '*' \
             -X POST \
