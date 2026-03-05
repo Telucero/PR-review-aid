@@ -973,14 +973,14 @@ jobs:
             : > "$HEADER_FILE"
 
             # FIX #5 — Separate body and status code using -o and -w to avoid fragile string slicing
-            BODY_FILE=$(mktemp)
-            HTTP_STATUS="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-              --connect-timeout 10 --max-time 60 \
-              --retry 1 --retry-all-errors \
-              --no-progress-meter --http1.1 --noproxy '*' \
-              -D "$HEADER_FILE" \
-              -o "$BODY_FILE" \
-              -w '%{http_code}' \
+	            BODY_FILE=$(mktemp)
+	            HTTP_STATUS="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+	              --connect-timeout 10 --max-time 7200 \
+	              --retry 1 --retry-all-errors \
+	              --no-progress-meter --http1.1 --noproxy '*' \
+	              -D "$HEADER_FILE" \
+	              -o "$BODY_FILE" \
+	              -w '%{http_code}' \
               -X POST \
               -H "Content-Type: application/json" \
               -H "X-Run-Token: $RUN_TOKEN" \
