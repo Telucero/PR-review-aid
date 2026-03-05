@@ -850,6 +850,9 @@ jobs:
           RUN_TOKEN: ${{ steps.run_uuid.outputs.run_token }}
         run: echo "::add-mask::$RUN_TOKEN"
 
+      # BLOCKING SEND — no --max-time set, so curl waits as long as n8n needs to respond.
+      # Only --connect-timeout is set to fail fast if n8n is unreachable.
+      # GitHub Actions job timeout (default 6h) is the only ceiling.
       - name: Combine and send to n8n webhook
         id: send_payload
         if: ${{ steps.trigger_phrase.outputs.triggered == 'true' && steps.oneshot.outputs.proceed == 'true' && steps.sha_guard.outputs.sha_ok == 'true' && steps.checkout.outcome == 'success' && steps.fetch_compare.outputs.ok == 'true' && steps.fetch_diff.outputs.ok == 'true' && steps.filter_files.outputs.addition_count != '0' }}
@@ -895,6 +898,7 @@ jobs:
             fi
           }
 
+          # Validate webhook URL and allowed host
           HOST="$(python3 -c 'from urllib.parse import urlparse; import sys; u=urlparse(sys.argv[1]); print(u.hostname or "")' "$N8N_WEBHOOK_URL")"
           SCHEME="$(python3 -c 'from urllib.parse import urlparse; import sys; u=urlparse(sys.argv[1]); print(u.scheme or "")' "$N8N_WEBHOOK_URL")"
           if [[ -z "$HOST" || "$SCHEME" != "https" ]]; then
@@ -914,6 +918,7 @@ jobs:
             exit 0
           fi
 
+          # Validate required files exist
           for f in pr.json files.json commits.json pr.diff diff.b64 added_lines.json; do
             [[ -f "$f" ]] || { echo "$f missing"; echo "error=true" >> "$GITHUB_OUTPUT"; exit 0; }
           done
@@ -926,6 +931,7 @@ jobs:
 
           guard_head_sha_unchanged
 
+          # Build payload
           DIFF_BASE64="$(tr -d '\n' < diff.b64)"
           if [[ -z "$DIFF_BASE64" ]]; then
             echo "diff.b64 is empty"
@@ -961,26 +967,28 @@ jobs:
           SIG="$(openssl dgst -sha256 -hmac "$N8N_SENDING_TOKEN" -binary < payload.json | base64 | tr -d '\n')"
 
           HEADER_FILE=$(mktemp)
-          trap 'rm -f "$HEADER_FILE"' EXIT
+          BODY_FILE=$(mktemp)
+          trap 'rm -f "$HEADER_FILE" "$BODY_FILE"' EXIT
 
           max_app_attempts=3
           app_attempt=1
           HTTP_BODY=""
           HTTP_STATUS=""
+
           while (( app_attempt <= max_app_attempts )); do
             guard_head_sha_unchanged
 
             : > "$HEADER_FILE"
 
-            # FIX #5 — Separate body and status code using -o and -w to avoid fragile string slicing
-	            BODY_FILE=$(mktemp)
-	            HTTP_STATUS="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
-	              --connect-timeout 10 --max-time 7200 \
-	              --retry 1 --retry-all-errors \
-	              --no-progress-meter --http1.1 --noproxy '*' \
-	              -D "$HEADER_FILE" \
-	              -o "$BODY_FILE" \
-	              -w '%{http_code}' \
+            # No --max-time set — curl waits indefinitely for n8n to respond.
+            # Only --connect-timeout is set to fail fast if n8n is unreachable.
+            # GitHub Actions job timeout (default 6h) is the only ceiling.
+            HTTP_STATUS="$(curl -sS --fail-with-body --proto '=https' --tlsv1.2 \
+              --connect-timeout 10 \
+              --no-progress-meter --http1.1 --noproxy '*' \
+              -D "$HEADER_FILE" \
+              -o "$BODY_FILE" \
+              -w '%{http_code}' \
               -X POST \
               -H "Content-Type: application/json" \
               -H "X-Run-Token: $RUN_TOKEN" \
@@ -995,7 +1003,6 @@ jobs:
                 exit 0
               }
             HTTP_BODY="$(cat "$BODY_FILE")"
-            rm -f "$BODY_FILE"
 
             echo "http_status=${HTTP_STATUS}" >> "$GITHUB_OUTPUT"
             echo "n8n responded with status: $HTTP_STATUS (attempt $app_attempt/$max_app_attempts)"
@@ -1047,13 +1054,13 @@ jobs:
           PY
           )"
           if [[ -z "${HEADER_SIG:-}" ]]; then
-            echo "Missing X-Response-Signature header from n8n; treating as error and skipping downstream processing."
+            echo "Missing X-Response-Signature header from n8n; treating as error."
             echo "error=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [[ "$STATUS" == "cancelled" ]]; then
-            echo "n8n workflow reported cancellation; skipping downstream processing."
+            echo "n8n workflow reported cancellation."
             echo "cancelled=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1091,17 +1098,15 @@ jobs:
 
           printf '%s' "$SANITIZED_BODY" > response_body_sanitized.json
           printf '%s' "$HEADER_SIG" > response_signature.txt
+
           PAYLOAD_FOR_SIG="$(
             HTTP_BODY_VAR="$HTTP_BODY" python3 - <<'PY'
-          import json
-          import os
-
+          import json, os
           body = os.environ.get("HTTP_BODY_VAR", "")
           try:
               data = json.loads(body)
           except json.JSONDecodeError:
               data = None
-
           payload = data.get("payload") if isinstance(data, dict) else None
           if (
               not isinstance(payload, list)
@@ -1110,7 +1115,6 @@ jobs:
               or not isinstance(payload[0].get("payload"), str)
           ):
               raise SystemExit(0)
-
           print(payload[0]["payload"], end="")
           PY
           )"
@@ -1122,7 +1126,7 @@ jobs:
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload n8n response artifact
-        if: ${{ steps.send_payload.outputs.executed == 'true' && steps.send_payload.outputs.error != 'true' && steps.send_payload.outputs.ok == 'true' }}
+        if: ${{ steps.send_payload.outputs.ok == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: n8n-response-${{ github.run_attempt }}
@@ -1136,7 +1140,7 @@ jobs:
       - name: Enforce n8n send failure
         if: ${{ steps.send_payload.outputs.error == 'true' }}
         run: |
-          echo n8n send step reported failure. Marking job as failed.
+          echo "n8n send step reported failure. Marking job as failed."
           exit 1
 
       - name: No eligible files to send
