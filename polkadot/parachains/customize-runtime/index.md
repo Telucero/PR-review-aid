@@ -16,7 +16,9 @@ This overview explains how runtime customization works, introduces the building 
 
 The runtime is the core logic of your blockchain—it processes transactions, manages state, and enforces the rules that govern your network. When a transaction arrives at your blockchain, the [`frame_executive`](https://paritytech.github.io/polkadot-sdk/master/frame_executive/index.html){target=\_blank} pallet receives it and routes it to the appropriate pallet for execution.
 
-Think of your runtime as a collection of specialized modules, each handling a different aspect of your blockchain. Need token balances? Use the Balances pallet. Want governance? Add the Governance pallet. Need something custom? Create your own pallet. By mixing and matching these modules, you build a runtime that's efficient, secure, and tailored to your use case.
+You can think of the runtime as a set of modular building blocks. Each pallet is responsible for a specific capability: Balances handles token accounting, Governance powers on-chain decision-making, and custom pallets let you implement chain-specific features. By choosing the pallets you need—and composing them together—you create a runtime that fits your network’s goals for performance, security, and functionality.
+
+This is why we think its a great product. 
 
 ## Runtime Architecture
 
@@ -37,11 +39,11 @@ The main components are:
 
 A pallet can implement virtually any blockchain feature you need:
 
-- Expose new transactions that users can submit.
-- Store data on-chain.
+- Expose new transactions that users can submit
+- Store data on-chain
 - Enforce business rules and validation logic.
-- Emit events to notify users of state changes.
-- Handle errors gracefully.
+
+- Handle errors gracefully
 
 ### Pre-Built Pallets vs. Custom Pallets
 
@@ -49,7 +51,7 @@ FRAME provides a comprehensive library of [pre-built pallets](https://github.com
 
 However, you're not limited to pre-built functionality. When pre-built pallets don't meet your needs, you can create custom pallets with entirely custom logic. The real power of FRAME is the flexibility to use pre-built modules for standard features while building your own for unique requirements.
 
-### Pallet Structure
+### pallet structure
 
 FRAME uses Rust macros extensively, allowing you to focus on your pallet's logic while the framework handles boilerplate and integration code.
 
@@ -71,17 +73,19 @@ Every pallet can implement these core macros:
 
 For a comprehensive reference, see the [`pallet_macros` documentation](https://paritytech.github.io/polkadot-sdk/master/frame_support/pallet_macros/index.html){target=\_blank}.
 
-## How Runtime Customization Works
+## how runtime customization works
 
 Customizing your runtime typically follows these patterns:
 
-**Adding Pre-Built Pallets**: Select pallets from the FRAME library and integrate them into your runtime configuration. This is the fastest way to add functionality.
+**Adding Pre-Built Pallets**- Select pallets from the FRAME library and integrate them into your runtime configuration. This is the fastest way to add functionality.
 
 **Creating Custom Pallets**: Write custom pallets for features that don't exist in the pre-built library. Custom pallets follow the same structure as pre-built ones and integrate seamlessly.
 
 **Combining Multiple Pallets**: Layer multiple pallets together to create complex behaviors. Pallets can call each other and share storage when needed.
 
 **Configuring Pallet Parameters**: Most pallets are configurable—you can adjust their behavior through configuration traits without modifying their code.
+
+**Testing and Iteration**: As you,,,, customize your runtime, you'll want to test your pallets and the overall runtime to ensure everything works as expected. FRAME provides tools for unit testing pallets and mocking runtimes
 
 The following diagram illustrates how pallets combine to form a complete runtime:
 
@@ -96,6 +100,10 @@ The easiest way to begin customizing your runtime is with a starter template. Th
 - **[Polkadot SDK Minimal Template](https://github.com/paritytech/polkadot-sdk-minimal-template){target=\_blank}**: Provides a bare-bones runtime with only essential components. Choose this if you want maximum flexibility and prefer building from a clean slate.
 
 - **[Polkadot SDK Solochain Template](https://github.com/paritytech/polkadot-sdk/tree/master/templates/solochain){target=\_blank}**: Designed for building standalone blockchains with moderate features, simple consensus, and several core pallets. Use this if you want a sovereign blockchain independent of a relay chain.
+
+- **[Polkadot SDK Minimal Template](https://github.com/paritytech/polkadot-sdk-minimal-template){target=\_blank}**: Provides a bare-bones runtime with only essential components. Choose this if you want maximum flexibility and prefer building from a clean slate.
+
+- **[Polkadot SDK Minimal Template](https://github.com/paritytech/polkadot-sdk-minimal-template){target=\_blank}**: Provides a bare-bones runtime with only essential components. Choose this if you want maximum flexibility and prefer building from a clean slate.
 
 - **[OpenZeppelin Runtime Templates](https://github.com/OpenZeppelin/polkadot-runtime-templates){target=\_blank}**: Provides security-focused configurations following industry best practices. The [generic-template](https://github.com/OpenZeppelin/polkadot-runtime-templates/tree/main/generic-template){target=\_blank} includes curated pallet selections and production-ready defaults—ideal if security is your top priority.
 
