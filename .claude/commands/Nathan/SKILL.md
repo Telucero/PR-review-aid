@@ -1,5 +1,5 @@
 ---
-name: Nathan
+name: nathan
 description: Triggers the Nathan AI review workflow by posting "+Nathan" on the open GitHub PR for the current branch. Works for both direct contributors and fork contributors. Requires an open PR on the current branch and the GitHub CLI (gh) to be authenticated with write access or higher on the upstream repository.
 chain-role: isolated
 invocation: user
