@@ -19,6 +19,11 @@ jobs:
     # the maintainer permission check is the primary security gate for that event type.
     if: ${{ (github.event_name == 'pull_request' && github.event.pull_request != null && github.event.pull_request.head.repo.fork == false) || (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && github.event.issue.state == 'open') }}
     runs-on: ubuntu-latest
+    # One active run per PR at a time. If a run is in progress and a new trigger arrives,
+    # the new one queues rather than stacking — at most 1 running + 1 pending per PR.
+    concurrency:
+      group: nathan-pr-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
     steps:
       - name: Validate dispatcher permissions (maintainers only)
         id: perm
@@ -45,9 +50,45 @@ jobs:
               ;;
           esac
 
+      - name: Cooldown check — prevent rapid re-triggers
+        id: cooldown
+        if: ${{ steps.perm.outputs.allowed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
+          CURRENT_COMMENT_ID: ${{ github.event.comment.id }}
+          COOLDOWN_MINUTES: '10'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${PR_NUMBER:-}" || ! "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ No valid PR number for cooldown check; skipping."
+            exit 0
+          fi
+
+          cutoff="$(date -u -d "${COOLDOWN_MINUTES} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Fetch only comments created within the cooldown window (since= is server-side filtering).
+          # Exclude the current triggering comment so a fresh +Nathan is never self-blocked.
+          recent="$(gh api \
+            "repos/${REPO}/issues/${PR_NUMBER}/comments?since=${cutoff}&per_page=100" \
+            --jq "[.[] | select(.body | ascii_downcase | contains(\"+nathan\")) | select(.id | tostring != \"${CURRENT_COMMENT_ID:-}\")] | length" \
+            2>/dev/null || echo "0")"
+
+          if [[ "${recent}" -gt 0 ]]; then
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            echo "⏭️ Nathan was already triggered within the last ${COOLDOWN_MINUTES} minutes; skipping to prevent duplicate reviews."
+          else
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+            echo "✅ No recent Nathan trigger found; proceeding."
+          fi
+
       - name: Check latest commit message (+Nathan) — commit push trigger
         id: gate_commit
-        if: ${{ steps.perm.outputs.allowed == 'true' && github.event_name == 'pull_request' }}
+        if: ${{ steps.perm.outputs.allowed == 'true' && steps.cooldown.outputs.blocked != 'true' && github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -73,7 +114,7 @@ jobs:
 
       - name: Check PR comment body (+Nathan) — comment trigger
         id: gate_comment
-        if: ${{ steps.perm.outputs.allowed == 'true' && github.event_name == 'issue_comment' }}
+        if: ${{ steps.perm.outputs.allowed == 'true' && steps.cooldown.outputs.blocked != 'true' && github.event_name == 'issue_comment' }}
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
@@ -103,7 +144,7 @@ jobs:
           shopt -u nocasematch
 
       - name: Dispatch Nathan workflow
-        if: ${{ steps.perm.outputs.allowed == 'true' && (steps.gate_commit.outputs.triggered == 'true' || steps.gate_comment.outputs.triggered == 'true') }}
+        if: ${{ steps.perm.outputs.allowed == 'true' && steps.cooldown.outputs.blocked != 'true' && (steps.gate_commit.outputs.triggered == 'true' || steps.gate_comment.outputs.triggered == 'true') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
