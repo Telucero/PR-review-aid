@@ -170,13 +170,18 @@ jobs:
           fi
 
           REF_INFO="${HEAD_REF:-<comment trigger>}"
-          echo "Dispatching trigger-n8n-workflow.yml for PR #${PR_NUMBER} (event=${EVENT_NAME:-unknown}, workflow ref=${DISPATCH_REF}, PR ref=${REF_INFO})"
+          TRIGGER_SOURCE="commit"
+          if [[ "${EVENT_NAME}" == "issue_comment" ]]; then
+            TRIGGER_SOURCE="comment"
+          fi
+          echo "Dispatching trigger-n8n-workflow.yml for PR #${PR_NUMBER} (event=${EVENT_NAME:-unknown}, trigger_source=${TRIGGER_SOURCE}, workflow ref=${DISPATCH_REF}, PR ref=${REF_INFO})"
 
           dispatch_output=""
           if dispatch_output="$(
             gh api -X POST "repos/${REPO}/actions/workflows/trigger-n8n-workflow.yml/dispatches" \
               -f ref="${DISPATCH_REF}" \
-              -f inputs[pr_number]="${PR_NUMBER}" 2>&1
+              -f inputs[pr_number]="${PR_NUMBER}" \
+              -f inputs[trigger_source]="${TRIGGER_SOURCE}" 2>&1
           )"; then
             exit 0
           fi
@@ -189,7 +194,8 @@ jobs:
             if dispatch_output="$(
               gh api -X POST "repos/${REPO}/actions/workflows/trigger-n8n-workflow.yml/dispatches" \
                 -f ref="${DISPATCH_REF}" \
-                -f inputs[pr_number]="${PR_NUMBER}" 2>&1
+                -f inputs[pr_number]="${PR_NUMBER}" \
+                -f inputs[trigger_source]="${TRIGGER_SOURCE}" 2>&1
             )"; then
               exit 0
             fi
