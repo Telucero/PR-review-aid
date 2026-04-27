@@ -1,4 +1,4 @@
-name: Nathan Commit Gate
+name: Nathan Gate
 
 on:
   pull_request:
@@ -35,7 +35,7 @@ jobs:
             --jq '.permission // ""' 2>/dev/null || true)"
 
           case "${permission}" in
-            admin|maintain)
+            admin|maintain|write)
               echo "allowed=true" >> "$GITHUB_OUTPUT"
               echo "✅ ${ACTOR} has ${permission} permission."
               ;;

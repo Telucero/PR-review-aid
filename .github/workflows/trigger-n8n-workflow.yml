@@ -47,7 +47,6 @@ jobs:
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
       PR_SELECTOR: ${{ github.event.inputs.pr_selector }}
       IS_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
-      N8N_ROSE_LANGUAGES: ${{ vars.N8N_ROSE_LANGUAGES }}
     steps:
       - name: Validate dispatcher permissions
         if: ${{ github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]' }}
@@ -63,7 +62,7 @@ jobs:
             --jq '.permission // ""')
 
           case $PERMISSION in
-            admin|maintain)
+            admin|maintain|write)
               echo "✅ ${ACTOR} has ${PERMISSION} permission."
               ;;
             *)
