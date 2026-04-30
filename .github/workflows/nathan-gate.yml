@@ -42,10 +42,12 @@ jobs:
           case "${permission}" in
             admin|maintain|write)
               echo "allowed=true" >> "$GITHUB_OUTPUT"
+              echo "permission=${permission}" >> "$GITHUB_OUTPUT"
               echo "✅ ${ACTOR} has ${permission} permission."
               ;;
             *)
               echo "allowed=false" >> "$GITHUB_OUTPUT"
+              echo "permission=${permission}" >> "$GITHUB_OUTPUT"
               echo "⏭️ ${ACTOR} is not a maintainer (permission='${permission:-none}'); skipping dispatch."
               ;;
           esac
@@ -58,7 +60,7 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
           CURRENT_COMMENT_ID: ${{ github.event.comment.id }}
-          COOLDOWN_MINUTES: '10'
+          COOLDOWN_MINUTES: '2'
         shell: bash
         run: |
           set -euo pipefail
